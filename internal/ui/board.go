@@ -18,6 +18,7 @@ type boardState struct {
 	cardIdx      []int
 	scrollOffset []int
 	statusMsg    string
+	modal        *modalState
 }
 
 func newBoardState(data jira.Board) *boardState {
@@ -126,6 +127,10 @@ func drawBoard(screen tcell.Screen, s *boardState, boardID, x, y, width, height 
 	drawStatusBar(screen, s, boardID, x, y, width)
 	drawHelpBar(screen, x, y+height-1, width)
 	drawColumns(screen, s, x, y+2, width, height-3)
+
+	if s.modal != nil {
+		drawModal(screen, s.modal, width, height)
+	}
 }
 
 func drawStatusBar(screen tcell.Screen, s *boardState, boardID, x, y, width int) {
@@ -154,7 +159,7 @@ func drawHelpBar(screen tcell.Screen, x, y, width int) {
 	style := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
 	fillRow(screen, x, y, width, style)
 	drawText(screen, x, y,
-		" ←/→ cols • ↑/↓ cards • enter view • o browser • r refresh • q quit",
+		" ←/→ cols • ↑/↓ cards • enter view • t transition • o browser • r refresh • q quit",
 		style, width)
 }
 
