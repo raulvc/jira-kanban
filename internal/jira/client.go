@@ -1,6 +1,7 @@
 package jira
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -28,7 +29,34 @@ func NewClient(baseURL, email, token string) *Client {
 	}
 }
 
-// getJSON performs an authenticated GET and JSON-decodes the response into out.
+// postJSONResponse performs an authenticated POST with a JSON body and
+// JSON-decodes the response into out.
+func (c *Client) postJSONResponse(rawURL string, body any, out any) error {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPost, rawURL, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	auth := base64.StdEncoding.EncodeToString([]byte(c.Email + ":" + c.Token))
+	req.Header.Set("Authorization", "Basic "+auth)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("HTTP %s: %s", resp.Status, strings.TrimSpace(string(respBody)))
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
 func (c *Client) getJSON(rawURL string, out any) error {
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {

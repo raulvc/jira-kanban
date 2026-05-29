@@ -11,6 +11,8 @@ import (
 
 const minColWidth = 28
 
+var spinnerFrames = []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'}
+
 // boardState holds the mutable navigation state of the board.
 type boardState struct {
 	data         jira.Board
@@ -18,6 +20,11 @@ type boardState struct {
 	cardIdx      []int
 	scrollOffset []int
 	statusMsg    string
+	syncing      bool
+	syncPhase    string
+	syncFetched  int
+	syncTotal    int
+	spinnerFrame int
 	modal        *modalState
 }
 
@@ -83,6 +90,58 @@ func (s *boardState) jumpCard(end bool) {
 	s.statusMsg = ""
 }
 
+// moveIssueToStatus moves a card from its current column to the column
+// matching toStatus. It performs a local, optimistic update so the UI
+// reflects the change immediately without waiting for a network round-trip.
+func (s *boardState) moveIssueToStatus(issueKey, toStatus string) {
+	// Find and remove from the source column.
+	var card jira.Card
+	srcCol := -1
+	srcIdx := -1
+	for ci, col := range s.data.Columns {
+		for ii, c := range col.Issues {
+			if c.Key == issueKey {
+				card = c
+				srcCol = ci
+				srcIdx = ii
+				break
+			}
+		}
+		if srcCol >= 0 {
+			break
+		}
+	}
+	if srcCol < 0 {
+		return
+	}
+
+	// Find the destination column by status name (case-insensitive).
+	dstCol := -1
+	lower := strings.ToLower(toStatus)
+	for ci, col := range s.data.Columns {
+		if strings.ToLower(col.Name) == lower {
+			dstCol = ci
+			break
+		}
+	}
+	if dstCol < 0 || dstCol == srcCol {
+		return
+	}
+
+	// Remove from source.
+	s.data.Columns[srcCol].Issues = append(
+		s.data.Columns[srcCol].Issues[:srcIdx],
+		s.data.Columns[srcCol].Issues[srcIdx+1:]...,
+	)
+	if s.cardIdx[srcCol] >= len(s.data.Columns[srcCol].Issues) && s.cardIdx[srcCol] > 0 {
+		s.cardIdx[srcCol]--
+	}
+
+	// Update the card's status and append to the destination column.
+	card.Status = toStatus
+	s.data.Columns[dstCol].Issues = append(s.data.Columns[dstCol].Issues, card)
+}
+
 func (s *boardState) reload(data jira.Board) {
 	s.data = data
 	if s.colIdx >= len(data.Columns) {
@@ -91,6 +150,10 @@ func (s *boardState) reload(data jira.Board) {
 	s.cardIdx = make([]int, len(data.Columns))
 	s.scrollOffset = make([]int, len(data.Columns))
 	s.statusMsg = ""
+	s.syncing = false
+	s.syncPhase = ""
+	s.syncFetched = 0
+	s.syncTotal = 0
 }
 
 // ── viewport helpers ────────────────────────────────────────────────────────
@@ -136,6 +199,43 @@ func drawBoard(screen tcell.Screen, s *boardState, boardID, x, y, width, height 
 func drawStatusBar(screen tcell.Screen, s *boardState, boardID, x, y, width int) {
 	style := tcell.StyleDefault.Foreground(colFg).Background(colPanel).Bold(true)
 	fillRow(screen, x, y, width, style)
+
+	if s.syncing {
+		syncStyle := tcell.StyleDefault.Foreground(colCyan).Background(colPanel).Bold(true)
+		barStyle := tcell.StyleDefault.Foreground(colCyan).Background(colPanel)
+		trackStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
+
+		frame := spinnerFrames[s.spinnerFrame%len(spinnerFrames)]
+
+		cx := x + 1
+		if s.syncTotal > 0 {
+			const barW = 20
+			pct := s.syncFetched * 100 / s.syncTotal
+			filled := min(s.syncFetched*barW/s.syncTotal, barW)
+
+			info := fmt.Sprintf("%s %d/%d ", s.syncPhase, s.syncFetched, s.syncTotal)
+			cx += drawText(screen, cx, y, info, trackStyle, width)
+
+			cx += drawText(screen, cx, y, "[", trackStyle, width)
+			for i := range barW {
+				ch := '░'
+				st := trackStyle
+				if i < filled {
+					ch = '█'
+					st = barStyle
+				}
+				screen.SetContent(cx+i, y, ch, nil, st)
+			}
+			cx += barW
+			cx += drawText(screen, cx, y, "]", trackStyle, width)
+
+			pctText := fmt.Sprintf(" %d%% ", pct)
+			cx += drawText(screen, cx, y, pctText, syncStyle, width)
+		}
+
+		drawText(screen, cx, y, fmt.Sprintf(" %c Syncing…", frame), syncStyle, width)
+		return
+	}
 
 	var text string
 	if s.statusMsg != "" {

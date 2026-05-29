@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -13,16 +14,18 @@ import (
 
 // appContext bundles the dependencies needed by input handlers.
 type appContext struct {
-	app     *tview.Application
-	state   *boardState
-	client  *jira.Client
-	boardID int
-	baseURL string
+	app         *tview.Application
+	state       *boardState
+	client      *jira.Client
+	boardID     int
+	baseURL     string
+	syncTicker  *time.Ticker
 }
 
 // Run starts the interactive TUI for the given board data.
-// It blocks until the user quits.
-func Run(client *jira.Client, boardID int, data jira.Board, baseURL string) error {
+// When needsSync is true the board was loaded from cache and a
+// background refresh is triggered immediately after the first render.
+func Run(client *jira.Client, boardID int, data jira.Board, baseURL string, needsSync bool) error {
 	app := tview.NewApplication()
 	state := newBoardState(data)
 	ctx := &appContext{
@@ -46,7 +49,53 @@ func Run(client *jira.Client, boardID int, data jira.Board, baseURL string) erro
 		return handleBoardInput(ctx, event)
 	})
 
+	if needsSync {
+		startSync(ctx)
+	}
+
 	return app.SetRoot(box, true).EnableMouse(false).Run()
+}
+
+// startSync begins a background board refresh with progress reporting
+// and an animated spinner in the status bar.
+func startSync(ctx *appContext) {
+	ctx.state.syncing = true
+	ctx.state.syncPhase = ""
+	ctx.state.syncFetched = 0
+	ctx.state.syncTotal = 0
+
+	ctx.syncTicker = time.NewTicker(100 * time.Millisecond)
+	go func() {
+		for range ctx.syncTicker.C {
+			if !ctx.state.syncing {
+				ctx.syncTicker.Stop()
+				return
+			}
+			ctx.state.spinnerFrame++
+			ctx.app.QueueUpdateDraw(func() {})
+		}
+	}()
+
+	go func() {
+		newData, err := ctx.client.RefreshBoard(ctx.boardID, func(p jira.SyncProgress) {
+			ctx.app.QueueUpdateDraw(func() {
+				ctx.state.syncPhase = p.Phase
+				ctx.state.syncFetched = p.Fetched
+				ctx.state.syncTotal = p.Total
+			})
+		})
+		ctx.app.QueueUpdateDraw(func() {
+			if ctx.syncTicker != nil {
+				ctx.syncTicker.Stop()
+			}
+			if err != nil {
+				ctx.state.syncing = false
+				ctx.state.statusMsg = fmt.Sprintf(" Sync error: %s", err.Error())
+				return
+			}
+			ctx.state.reload(newData)
+		})
+	}()
 }
 
 // ── board input ─────────────────────────────────────────────────────────────
@@ -92,10 +141,14 @@ func handleBoardRune(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		openIssueBrowser(ctx)
 		return nil
 	case 'r':
-		refreshBoard(ctx)
+		if !ctx.state.syncing {
+			refreshBoard(ctx)
+		}
 		return nil
 	case 't':
-		openTransitionModal(ctx)
+		if !ctx.state.syncing {
+			openTransitionModal(ctx)
+		}
 		return nil
 	}
 	return event
@@ -121,11 +174,12 @@ func handleModalInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyCtrlC:
 		ctx.app.Stop()
 		return nil
+	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		m.backspace()
+		return nil
 	case tcell.KeyRune:
-		if event.Rune() == 'q' {
-			ctx.state.modal = nil
-			return nil
-		}
+		m.typeRune(event.Rune())
+		return nil
 	}
 	return nil
 }
@@ -152,8 +206,8 @@ func openTransitionModal(ctx *appContext) {
 				return
 			}
 			ctx.state.modal = &modalState{
-				issueKey:    card.Key,
-				transitions: transitions,
+				issueKey:       card.Key,
+				allTransitions: transitions,
 			}
 		})
 	}()
@@ -168,8 +222,11 @@ func executeTransition(ctx *appContext) {
 	issueKey := m.issueKey
 	transitionID := t.ID
 	transitionName := t.Name
+	toStatus := t.ToStatus
+	toStatusID := t.ToStatusID
 
 	ctx.state.modal = nil
+	ctx.state.moveIssueToStatus(issueKey, toStatus)
 	ctx.state.statusMsg = fmt.Sprintf(" Transitioning %s → %s…", issueKey, transitionName)
 	ctx.app.ForceDraw()
 
@@ -179,33 +236,20 @@ func executeTransition(ctx *appContext) {
 			ctx.app.QueueUpdateDraw(func() {
 				ctx.state.statusMsg = fmt.Sprintf(" Error: %s", err.Error())
 			})
+			startSync(ctx)
 			return
 		}
-		newData, fetchErr := ctx.client.FetchBoard(ctx.boardID)
+		// Persist the status change to cache so the next sync doesn't revert it.
+		ctx.client.UpdateCachedStatus(ctx.boardID, issueKey, toStatusID, toStatus)
 		ctx.app.QueueUpdateDraw(func() {
-			if fetchErr != nil {
-				ctx.state.statusMsg = fmt.Sprintf(" Transitioned, but refresh failed: %s", fetchErr.Error())
-				return
-			}
-			ctx.state.reload(newData)
-			ctx.state.statusMsg = fmt.Sprintf(" %s transitioned to %s", issueKey, transitionName)
+			ctx.state.statusMsg = fmt.Sprintf(" %s → %s", issueKey, transitionName)
 		})
+		startSync(ctx)
 	}()
 }
 
 func refreshBoard(ctx *appContext) {
-	ctx.state.statusMsg = " Reloading…"
-	ctx.app.ForceDraw()
-	go func() {
-		newData, err := ctx.client.FetchBoard(ctx.boardID)
-		ctx.app.QueueUpdateDraw(func() {
-			if err != nil {
-				ctx.state.statusMsg = fmt.Sprintf(" Error: %s", err.Error())
-				return
-			}
-			ctx.state.reload(newData)
-		})
-	}()
+	startSync(ctx)
 }
 
 func openIssueView(ctx *appContext) {

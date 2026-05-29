@@ -22,6 +22,12 @@ type boardIssuesResponse struct {
 	Issues     []issue `json:"issues"`
 }
 
+// searchJqlResponse is the JSON shape returned by POST /rest/api/3/search/jql.
+type searchJqlResponse struct {
+	Issues        []issue `json:"issues"`
+	NextPageToken string  `json:"nextPageToken"`
+}
+
 // issue is a single Jira issue as returned by the board issues endpoint.
 type issue struct {
 	Key    string `json:"key"`
@@ -57,4 +63,15 @@ type Column struct {
 type Board struct {
 	Name    string
 	Columns []Column
+}
+
+// VisibleKeys returns the set of issue keys present on the board.
+func (b Board) VisibleKeys() map[string]bool {
+	keys := make(map[string]bool)
+	for _, col := range b.Columns {
+		for _, card := range col.Issues {
+			keys[card.Key] = true
+		}
+	}
+	return keys
 }
