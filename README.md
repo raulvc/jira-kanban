@@ -1,0 +1,70 @@
+# jira-kanban
+
+A fast, lightweight Jira kanban board for the terminal.
+
+Jira's web interface is resource-heavy and slow — it easily consumes hundreds of megabytes of RAM and still feels sluggish. `jira-kanban` gives you a snappy, keyboard-driven view of your board that stays out of your way and uses a fraction of the resources.
+
+## Install
+
+```
+go install github.com/raulvc/jira-kanban@latest
+```
+
+## First run
+
+On first launch, `jira-kanban` will prompt for any missing configuration values interactively (with masked input for the API token) and save them automatically:
+
+```
+$ jira-kanban
+Jira base URL [https://your-company.atlassian.net]:
+Email [you@company.com]:
+API token:
+Board ID [42]:
+```
+
+After that, the config file is stored at `~/.config/jira-kanban/config.yml` and you won't be prompted again.
+
+### Configuration file
+
+```yaml
+base_url: "https://your-company.atlassian.net"
+email: "you@company.com"
+api_token: "your-jira-api-token"
+board_id: 42
+```
+
+> **API token** — Create one at [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens).
+
+### Override the board
+
+You can switch boards without editing the config:
+
+```
+jira-kanban 17           # positional board ID
+jira-kanban --board 17   # flag form
+```
+
+## Keyboard shortcuts
+
+| Key | Action |
+|-----|--------|
+| `←` / `→` | Move between columns |
+| `↑` / `↓` | Move between cards |
+| `enter` | View issue details |
+| `t` | Transition issue (with search filter) |
+| `o` | Open issue in browser |
+| `r` | Refresh board |
+| `q` | Quit |
+
+## How it works
+
+- **Cold start** — fetches all visible issues from the board and builds a local cache.
+- **Warm start** — returns cached data instantly, then syncs changes in the background.
+- **Incremental sync** — only fetches issues that changed since the last sync, instead of re-downloading the entire board.
+- **Optimistic transitions** — moving a card updates the UI immediately, then persists to Jira in the background.
+
+Cache is stored at `$XDG_CACHE_HOME/jira-kanban/<board-id>.json`.
+
+## License
+
+BSD-2-Clause
