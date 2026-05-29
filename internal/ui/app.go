@@ -11,11 +11,27 @@ import (
 	"github.com/raulvc/jira-kanban/internal/jira"
 )
 
+// appContext bundles the dependencies needed by input handlers.
+type appContext struct {
+	app     *tview.Application
+	state   *boardState
+	client  *jira.Client
+	boardID int
+	baseURL string
+}
+
 // Run starts the interactive TUI for the given board data.
 // It blocks until the user quits.
 func Run(client *jira.Client, boardID int, data jira.Board, baseURL string) error {
 	app := tview.NewApplication()
 	state := newBoardState(data)
+	ctx := &appContext{
+		app:     app,
+		state:   state,
+		client:  client,
+		boardID: boardID,
+		baseURL: baseURL,
+	}
 
 	box := tview.NewBox().SetBackgroundColor(colBg)
 	box.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
@@ -23,81 +39,181 @@ func Run(client *jira.Client, boardID int, data jira.Board, baseURL string) erro
 		return x, y, width, height
 	})
 
-	refresh := func() {
-		state.statusMsg = " Reloading…"
-		app.ForceDraw()
-		go func() {
-			newData, err := client.FetchBoard(boardID)
-			app.QueueUpdateDraw(func() {
-				if err != nil {
-					state.statusMsg = fmt.Sprintf(" Error: %s", err.Error())
-					return
-				}
-				state.reload(newData)
-			})
-		}()
-	}
-
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		return handleInput(app, state, refresh, baseURL, event)
+		if state.modal != nil {
+			return handleModalInput(ctx, event)
+		}
+		return handleBoardInput(ctx, event)
 	})
 
 	return app.SetRoot(box, true).EnableMouse(false).Run()
 }
 
-func handleInput(app *tview.Application, s *boardState, refresh func(), baseURL string, event *tcell.EventKey) *tcell.EventKey {
+// ── board input ─────────────────────────────────────────────────────────────
+
+func handleBoardInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 	switch event.Key() {
 	case tcell.KeyCtrlC:
-		app.Stop()
+		ctx.app.Stop()
 		return nil
 	case tcell.KeyLeft:
-		s.moveColumn(-1)
+		ctx.state.moveColumn(-1)
 		return nil
 	case tcell.KeyRight:
-		s.moveColumn(1)
+		ctx.state.moveColumn(1)
 		return nil
 	case tcell.KeyUp:
-		s.moveCard(-1)
+		ctx.state.moveCard(-1)
 		return nil
 	case tcell.KeyDown:
-		s.moveCard(1)
+		ctx.state.moveCard(1)
 		return nil
 	case tcell.KeyHome:
-		s.jumpCard(false)
+		ctx.state.jumpCard(false)
 		return nil
 	case tcell.KeyEnd:
-		s.jumpCard(true)
+		ctx.state.jumpCard(true)
 		return nil
 	case tcell.KeyEnter:
-		openIssueView(app, s)
+		openIssueView(ctx)
 		return nil
 	case tcell.KeyRune:
-		return handleRune(app, s, refresh, baseURL, event)
+		return handleBoardRune(ctx, event)
 	}
 	return event
 }
 
-func handleRune(app *tview.Application, s *boardState, refresh func(), baseURL string, event *tcell.EventKey) *tcell.EventKey {
+func handleBoardRune(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 	switch event.Rune() {
 	case 'q':
-		app.Stop()
+		ctx.app.Stop()
 		return nil
 	case 'o':
-		openIssueBrowser(s, baseURL)
+		openIssueBrowser(ctx)
 		return nil
 	case 'r':
-		refresh()
+		refreshBoard(ctx)
+		return nil
+	case 't':
+		openTransitionModal(ctx)
 		return nil
 	}
 	return event
 }
 
-func openIssueView(app *tview.Application, s *boardState) {
-	card := s.selectedCard()
+// ── modal input ─────────────────────────────────────────────────────────────
+
+func handleModalInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
+	m := ctx.state.modal
+	switch event.Key() {
+	case tcell.KeyEscape:
+		ctx.state.modal = nil
+		return nil
+	case tcell.KeyUp:
+		m.moveSelection(-1)
+		return nil
+	case tcell.KeyDown:
+		m.moveSelection(1)
+		return nil
+	case tcell.KeyEnter:
+		executeTransition(ctx)
+		return nil
+	case tcell.KeyCtrlC:
+		ctx.app.Stop()
+		return nil
+	case tcell.KeyRune:
+		if event.Rune() == 'q' {
+			ctx.state.modal = nil
+			return nil
+		}
+	}
+	return nil
+}
+
+// ── actions ─────────────────────────────────────────────────────────────────
+
+func openTransitionModal(ctx *appContext) {
+	card := ctx.state.selectedCard()
 	if card == nil {
 		return
 	}
-	app.Suspend(func() {
+	ctx.state.statusMsg = " Loading transitions…"
+	ctx.app.ForceDraw()
+	go func() {
+		transitions, err := ctx.client.GetTransitions(card.Key)
+		ctx.app.QueueUpdateDraw(func() {
+			ctx.state.statusMsg = ""
+			if err != nil {
+				ctx.state.statusMsg = fmt.Sprintf(" Error: %s", err.Error())
+				return
+			}
+			if len(transitions) == 0 {
+				ctx.state.statusMsg = " No transitions available"
+				return
+			}
+			ctx.state.modal = &modalState{
+				issueKey:    card.Key,
+				transitions: transitions,
+			}
+		})
+	}()
+}
+
+func executeTransition(ctx *appContext) {
+	m := ctx.state.modal
+	t := m.selectedTransition()
+	if t == nil {
+		return
+	}
+	issueKey := m.issueKey
+	transitionID := t.ID
+	transitionName := t.Name
+
+	ctx.state.modal = nil
+	ctx.state.statusMsg = fmt.Sprintf(" Transitioning %s → %s…", issueKey, transitionName)
+	ctx.app.ForceDraw()
+
+	go func() {
+		err := ctx.client.DoTransition(issueKey, transitionID)
+		if err != nil {
+			ctx.app.QueueUpdateDraw(func() {
+				ctx.state.statusMsg = fmt.Sprintf(" Error: %s", err.Error())
+			})
+			return
+		}
+		newData, fetchErr := ctx.client.FetchBoard(ctx.boardID)
+		ctx.app.QueueUpdateDraw(func() {
+			if fetchErr != nil {
+				ctx.state.statusMsg = fmt.Sprintf(" Transitioned, but refresh failed: %s", fetchErr.Error())
+				return
+			}
+			ctx.state.reload(newData)
+			ctx.state.statusMsg = fmt.Sprintf(" %s transitioned to %s", issueKey, transitionName)
+		})
+	}()
+}
+
+func refreshBoard(ctx *appContext) {
+	ctx.state.statusMsg = " Reloading…"
+	ctx.app.ForceDraw()
+	go func() {
+		newData, err := ctx.client.FetchBoard(ctx.boardID)
+		ctx.app.QueueUpdateDraw(func() {
+			if err != nil {
+				ctx.state.statusMsg = fmt.Sprintf(" Error: %s", err.Error())
+				return
+			}
+			ctx.state.reload(newData)
+		})
+	}()
+}
+
+func openIssueView(ctx *appContext) {
+	card := ctx.state.selectedCard()
+	if card == nil {
+		return
+	}
+	ctx.app.Suspend(func() {
 		c := exec.Command("jira", "issue", "view", card.Key) //nolint:gosec // key comes from the Jira API, not user input
 		c.Stdin = os.Stdin
 		c.Stdout = os.Stdout
@@ -106,12 +222,12 @@ func openIssueView(app *tview.Application, s *boardState) {
 	})
 }
 
-func openIssueBrowser(s *boardState, baseURL string) {
-	card := s.selectedCard()
+func openIssueBrowser(ctx *appContext) {
+	card := ctx.state.selectedCard()
 	if card == nil {
 		return
 	}
-	issueURL := fmt.Sprintf("%s/browse/%s", baseURL, card.Key)
+	issueURL := fmt.Sprintf("%s/browse/%s", ctx.baseURL, card.Key)
 	c := exec.Command("xdg-open", issueURL) //nolint:gosec // URL is constructed from config base URL + Jira key
 	_ = c.Start()
 }
