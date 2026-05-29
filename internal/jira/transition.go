@@ -12,16 +12,19 @@ import (
 
 // Transition represents one available status transition for an issue.
 type Transition struct {
-	ID   string
-	Name string
+	ID         string
+	Name       string
+	ToStatusID string
+	ToStatus   string
 }
 
-// transitionsResponse is the JSON shape returned by GET /rest/api/2/issue/{key}/transitions.
+// transitionsResponse is the JSON shape returned by GET /rest/api/3/issue/{key}/transitions.
 type transitionsResponse struct {
 	Transitions []struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 		To   struct {
+			ID   string `json:"id"`
 			Name string `json:"name"`
 		} `json:"to"`
 	} `json:"transitions"`
@@ -29,7 +32,7 @@ type transitionsResponse struct {
 
 // GetTransitions returns the available transitions for the given issue key.
 func (c *Client) GetTransitions(issueKey string) ([]Transition, error) {
-	u := fmt.Sprintf("%s/rest/api/2/issue/%s/transitions", c.BaseURL, issueKey)
+	u := fmt.Sprintf("%s/rest/api/3/issue/%s/transitions", c.BaseURL, issueKey)
 	var resp transitionsResponse
 	if err := c.getJSON(u, &resp); err != nil {
 		return nil, fmt.Errorf("get transitions for %s: %w", issueKey, err)
@@ -40,14 +43,14 @@ func (c *Client) GetTransitions(issueKey string) ([]Transition, error) {
 		if t.To.Name != "" && t.To.Name != t.Name {
 			name = t.Name + " → " + t.To.Name
 		}
-		out[i] = Transition{ID: t.ID, Name: name}
+		out[i] = Transition{ID: t.ID, Name: name, ToStatusID: t.To.ID, ToStatus: t.To.Name}
 	}
 	return out, nil
 }
 
 // DoTransition executes a status transition on the given issue.
 func (c *Client) DoTransition(issueKey, transitionID string) error {
-	u := fmt.Sprintf("%s/rest/api/2/issue/%s/transitions", c.BaseURL, issueKey)
+	u := fmt.Sprintf("%s/rest/api/3/issue/%s/transitions", c.BaseURL, issueKey)
 	body := map[string]any{
 		"transition": map[string]string{"id": transitionID},
 	}

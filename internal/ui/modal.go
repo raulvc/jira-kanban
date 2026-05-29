@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"strings"
+
 	"github.com/gdamore/tcell/v2"
 
 	"github.com/raulvc/jira-kanban/internal/jira"
@@ -9,35 +11,68 @@ import (
 // modalState tracks a transition picker modal.
 // A nil modalState means no modal is open.
 type modalState struct {
-	issueKey    string
-	transitions []jira.Transition
-	selected    int
-	errMsg      string
+	issueKey       string
+	allTransitions []jira.Transition
+	query          string
+	selected       int
+	errMsg         string
+}
+
+func (m *modalState) filtered() []jira.Transition {
+	if m.query == "" {
+		return m.allTransitions
+	}
+	q := strings.ToLower(m.query)
+	var out []jira.Transition
+	for _, t := range m.allTransitions {
+		if strings.Contains(strings.ToLower(t.Name), q) {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func (m *modalState) moveSelection(delta int) {
-	if len(m.transitions) == 0 {
+	items := m.filtered()
+	if len(items) == 0 {
 		return
 	}
 	m.selected += delta
-	m.selected = max(0, min(m.selected, len(m.transitions)-1))
+	m.selected = max(0, min(m.selected, len(items)-1))
 }
 
 func (m *modalState) selectedTransition() *jira.Transition {
-	if m.selected < 0 || m.selected >= len(m.transitions) {
+	items := m.filtered()
+	if m.selected < 0 || m.selected >= len(items) {
 		return nil
 	}
-	return &m.transitions[m.selected]
+	return &items[m.selected]
+}
+
+func (m *modalState) typeRune(r rune) {
+	m.query += string(r)
+	m.selected = 0
+}
+
+func (m *modalState) backspace() {
+	if len(m.query) > 0 {
+		runes := []rune(m.query)
+		m.query = string(runes[:len(runes)-1])
+		items := m.filtered()
+		if m.selected >= len(items) && len(items) > 0 {
+			m.selected = len(items) - 1
+		}
+	}
 }
 
 // drawModal renders a centered transition picker over the board.
 func drawModal(screen tcell.Screen, m *modalState, screenW, screenH int) {
-	// Modal dimensions
 	const padding = 2
 	contentW := 40
-	itemCount := len(m.transitions)
-	// title(1) + blank(1) + items + blank(1) + buttons(1) + optional error(1)
-	contentH := 4 + itemCount
+	items := m.filtered()
+	itemCount := len(items)
+	// title(1) + search(1) + blank(1) + items + blank(1) + buttons(1) + optional error(1)
+	contentH := 5 + itemCount
 	if m.errMsg != "" {
 		contentH++
 	}
@@ -61,6 +96,8 @@ func drawModal(screen tcell.Screen, m *modalState, screenW, screenH int) {
 	bgStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
 	borderStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
 	titleStyle := tcell.StyleDefault.Foreground(colBlue).Background(colPanel).Bold(true)
+	searchStyle := tcell.StyleDefault.Foreground(colFg).Background(colBg)
+	searchPlaceholder := tcell.StyleDefault.Foreground(colMuted).Background(colBg)
 	itemStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
 	selStyle := tcell.StyleDefault.Foreground(colFg).Background(colCardSel).Bold(true)
 	btnOKStyle := tcell.StyleDefault.Foreground(colBg).Background(colGreen).Bold(true)
@@ -79,10 +116,21 @@ func drawModal(screen tcell.Screen, m *modalState, screenW, screenH int) {
 	cy := oy + 1
 	title := " Transition: " + m.issueKey + " "
 	drawText(screen, ox+padding, cy, title, titleStyle, contentW)
-	cy += 2
+	cy++
+
+	// Search input
+	fillRow(screen, ox+padding, cy, contentW, searchStyle)
+	if m.query == "" {
+		drawText(screen, ox+padding, cy, " Search…", searchPlaceholder, contentW)
+	} else {
+		drawText(screen, ox+padding, cy, " "+m.query+"▏", searchStyle, contentW)
+	}
+	cy++
+
+	cy++
 
 	// Transition items
-	maxVisible := boxH - 5
+	maxVisible := boxH - 6
 	if m.errMsg != "" {
 		maxVisible--
 	}
@@ -99,8 +147,8 @@ func drawModal(screen tcell.Screen, m *modalState, screenW, screenH int) {
 		scrollStart = m.selected
 	}
 
-	for i := scrollStart; i < len(m.transitions) && i < scrollStart+maxVisible; i++ {
-		t := m.transitions[i]
+	for i := scrollStart; i < len(items) && i < scrollStart+maxVisible; i++ {
+		t := items[i]
 		style := itemStyle
 		prefix := "  "
 		if i == m.selected {
@@ -110,6 +158,11 @@ func drawModal(screen tcell.Screen, m *modalState, screenW, screenH int) {
 		fillRow(screen, ox+1, cy, boxW-2, style)
 		text := truncStr(t.Name, contentW-3)
 		drawText(screen, ox+padding, cy, prefix+text, style, contentW)
+		cy++
+	}
+
+	if len(items) == 0 {
+		drawText(screen, ox+padding, cy, "  No matches", searchPlaceholder, contentW)
 		cy++
 	}
 

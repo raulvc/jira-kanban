@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/raulvc/jira-kanban/internal/config"
 	"github.com/raulvc/jira-kanban/internal/jira"
@@ -37,13 +38,41 @@ func run() error {
 
 	client := jira.NewClient(cfg.BaseURL, cfg.Email, cfg.Token)
 
-	fmt.Fprintln(os.Stderr, "Loading board…")
-	data, err := client.FetchBoard(cfg.BoardID)
+	data, fromCache, err := client.FetchBoard(cfg.BoardID, printProgress)
 	if err != nil {
+		fmt.Fprintln(os.Stderr)
 		return err
 	}
+	clearProgress()
 
-	return ui.Run(client, cfg.BoardID, data, cfg.BaseURL)
+	return ui.Run(client, cfg.BoardID, data, cfg.BaseURL, fromCache)
+}
+
+const barWidth = 30
+
+func printProgress(p jira.Progress) {
+	var label string
+	if p.Cold {
+		label = "First run — building cache"
+	} else {
+		label = "Syncing changes"
+	}
+
+	if p.Total == 0 {
+		fmt.Fprintf(os.Stderr, "\r  %s…", label)
+		return
+	}
+
+	pct := p.Fetched * 100 / p.Total
+	filled := p.Fetched * barWidth / p.Total
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+
+	fmt.Fprintf(os.Stderr, "\r  %s  [%s] %3d%%  %d/%d issues",
+		label, bar, pct, p.Fetched, p.Total)
+}
+
+func clearProgress() {
+	fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 80))
 }
 
 // parseBoardFlag applies --board or positional board ID overrides.
