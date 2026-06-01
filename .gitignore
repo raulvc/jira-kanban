@@ -31,8 +31,8 @@ go.work.sum
 # .idea/
 # .vscode/
 
--/jira-kanban
--!/jira-kanban/
--/dummyjira
--!/dummyjira/
+/jira-kanban
+!/jira-kanban/
+/dummyjira
+!/dummyjira/
 *.tape

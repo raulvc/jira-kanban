@@ -86,6 +86,23 @@ func (c *Client) Ping(boardID int) error {
 	return nil
 }
 
+// GetIssue fetches the full issue details (including description) for a key.
+func (c *Client) GetIssue(key string) (Card, error) {
+	u := fmt.Sprintf("%s/rest/api/3/issue/%s", c.BaseURL, key)
+	var resp issue
+	if err := c.getJSON(u, &resp); err != nil {
+		return Card{}, fmt.Errorf("get issue %s: %w", key, err)
+	}
+	return Card{
+		Key:         resp.Key,
+		Summary:     resp.Fields.Summary,
+		Status:      resp.Fields.Status.Name,
+		Assignee:    assigneeName(resp),
+		Labels:      resp.Fields.Labels,
+		Description: parseDescription(resp.Fields.Description),
+	}, nil
+}
+
 func (c *Client) getJSON(rawURL string, out any) error {
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {

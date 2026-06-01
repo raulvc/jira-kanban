@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"time"
 
@@ -46,7 +45,10 @@ func Run(client *jira.Client, boardID int, data jira.Board, baseURL string, need
 		if state.filter != nil {
 			return handleFilterInput(ctx, event)
 		}
-		if state.modal != nil {
+		if state.detail != nil {
+		return handleDetailInput(ctx, event)
+	}
+	if state.modal != nil {
 			return handleModalInput(ctx, event)
 		}
 		return handleBoardInput(ctx, event)
@@ -127,7 +129,7 @@ func handleBoardInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		ctx.state.jumpCard(true)
 		return nil
 	case tcell.KeyEnter:
-		openIssueView(ctx)
+		openIssueDetail(ctx)
 		return nil
 	case tcell.KeyRune:
 		return handleBoardRune(ctx, event)
@@ -299,18 +301,55 @@ func refreshBoard(ctx *appContext) {
 	startSync(ctx)
 }
 
-func openIssueView(ctx *appContext) {
+func openIssueDetail(ctx *appContext) {
 	card := ctx.state.selectedCard()
 	if card == nil {
 		return
 	}
-	ctx.app.Suspend(func() {
-		c := exec.Command("jira", "issue", "view", card.Key) //nolint:gosec // key comes from the Jira API, not user input
-		c.Stdin = os.Stdin
-		c.Stdout = os.Stdout
-		c.Stderr = os.Stderr
-		_ = c.Run()
-	})
+	key := card.Key
+	ctx.state.detail = &detailState{
+		card:    *card,
+		loading: true,
+	}
+	go func() {
+		full, err := ctx.client.GetIssue(key)
+		ctx.app.QueueUpdateDraw(func() {
+			d := ctx.state.detail
+			if d == nil || d.card.Key != key {
+				return
+			}
+			if err != nil {
+				d.loading = false
+				d.err = err.Error()
+				return
+			}
+			d.card = full
+			d.loading = false
+		})
+	}()
+}
+
+// ── detail input ───────────────────────────────────────────────────────────
+
+func handleDetailInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
+	d := ctx.state.detail
+	switch event.Key() {
+	case tcell.KeyEscape:
+		ctx.state.detail = nil
+		return nil
+	case tcell.KeyUp:
+		if d.scroll > 0 {
+			d.scroll--
+		}
+		return nil
+	case tcell.KeyDown:
+		d.scroll++
+		return nil
+	case tcell.KeyCtrlC:
+		ctx.app.Stop()
+		return nil
+	}
+	return nil
 }
 
 func openIssueBrowser(ctx *appContext) {

@@ -32,11 +32,24 @@ func main() {
 		_ = json.NewEncoder(w).Encode(searchResults())
 	})
 
-	// GET /rest/api/3/issue/{key}/transitions
+	// GET /rest/api/3/issue/{key} or /transitions
 	mux.HandleFunc("/rest/api/3/issue/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/transitions") {
 			_ = json.NewEncoder(w).Encode(transitions())
+			return
+		}
+		if r.Method == http.MethodGet {
+			key, ok := strings.CutPrefix(r.URL.Path, "/rest/api/3/issue/")
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			if iss, found := findIssue(key); found {
+				_ = json.NewEncoder(w).Encode(issueDetail(iss))
+				return
+			}
+			http.NotFound(w, r)
 			return
 		}
 		// POST transition — just accept
@@ -153,6 +166,94 @@ func boardIssues() any {
 func searchResults() any {
 	return map[string]any{
 		"issues": allIssues(),
+	}
+}
+
+func findIssue(key string) (issue, bool) {
+	for _, iss := range allIssues() {
+		if iss.Key == key {
+			return iss, true
+		}
+	}
+	return issue{}, false
+}
+
+func issueDetail(iss issue) any {
+	desc := adfParagraph(iss.Fields.Summary + " — details for " + iss.Key)
+	if iss.Key == "ENG-101" {
+		desc = adfFromLines(
+			"Implement the full OAuth 2.0 authorization code flow.",
+			"Support PKCE and refresh token rotation.",
+			"",
+			"Acceptance criteria:",
+			"• Login via Google and GitHub providers",
+			"• Token refresh without re-auth",
+			"• Session timeout after 30 min",
+		)
+	}
+	return map[string]any{
+		"key": iss.Key,
+		"fields": map[string]any{
+			"summary":     iss.Fields.Summary,
+			"status":      map[string]string{"id": iss.Fields.Status.ID, "name": iss.Fields.Status.Name},
+			"assignee":    iss.Fields.Assignee,
+			"labels":      iss.Fields.Labels,
+			"description": desc,
+		},
+	}
+}
+
+func adfParagraph(text string) map[string]any {
+	return map[string]any{
+		"type":    "doc",
+		"version": 1,
+		"content": []map[string]any{
+			{
+				"type": "paragraph",
+				"content": []map[string]any{
+					{"type": "text", "text": text},
+				},
+			},
+		},
+	}
+}
+
+func adfFromLines(lines ...string) map[string]any {
+	var content []map[string]any
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		if text, ok := strings.CutPrefix(line, "• "); ok {
+			content = append(content, map[string]any{
+				"type": "bulletList",
+				"content": []map[string]any{
+					{
+						"type": "listItem",
+						"content": []map[string]any{
+							{
+								"type": "paragraph",
+								"content": []map[string]any{
+									{"type": "text", "text": text},
+								},
+							},
+						},
+					},
+				},
+			})
+		} else {
+			content = append(content, map[string]any{
+				"type": "paragraph",
+				"content": []map[string]any{
+					{"type": "text", "text": line},
+				},
+			})
+		}
+	}
+	return map[string]any{
+		"type":    "doc",
+		"version": 1,
+		"content": content,
 	}
 }
 

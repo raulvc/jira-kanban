@@ -27,6 +27,7 @@ type boardState struct {
 	spinnerFrame int
 	modal        *modalState
 	filter       *filterState
+	detail       *detailState
 	memberFilter string
 }
 
@@ -39,10 +40,11 @@ func newBoardState(data jira.Board) *boardState {
 }
 
 func (s *boardState) selectedCard() *jira.Card {
-	if s.colIdx >= len(s.data.Columns) {
+	fd := s.filteredData()
+	if s.colIdx >= len(fd.Columns) {
 		return nil
 	}
-	col := s.data.Columns[s.colIdx]
+	col := fd.Columns[s.colIdx]
 	if len(col.Issues) == 0 {
 		return nil
 	}
@@ -59,14 +61,19 @@ func (s *boardState) moveColumn(delta int) {
 		return
 	}
 	s.colIdx = next
+	fd := s.filteredData()
+	if s.cardIdx[next] >= len(fd.Columns[next].Issues) && len(fd.Columns[next].Issues) > 0 {
+		s.cardIdx[next] = len(fd.Columns[next].Issues) - 1
+	}
 	s.statusMsg = ""
 }
 
 func (s *boardState) moveCard(delta int) {
-	if s.colIdx >= len(s.data.Columns) {
+	fd := s.filteredData()
+	if s.colIdx >= len(fd.Columns) {
 		return
 	}
-	issues := s.data.Columns[s.colIdx].Issues
+	issues := fd.Columns[s.colIdx].Issues
 	if len(issues) == 0 {
 		return
 	}
@@ -77,10 +84,11 @@ func (s *boardState) moveCard(delta int) {
 }
 
 func (s *boardState) jumpCard(end bool) {
-	if s.colIdx >= len(s.data.Columns) {
+	fd := s.filteredData()
+	if s.colIdx >= len(fd.Columns) {
 		return
 	}
-	issues := s.data.Columns[s.colIdx].Issues
+	issues := fd.Columns[s.colIdx].Issues
 	if len(issues) == 0 {
 		return
 	}
@@ -218,6 +226,9 @@ func drawBoard(screen tcell.Screen, s *boardState, boardID, x, y, width, height 
 	}
 	if s.filter != nil {
 		drawFilterModal(screen, s.filter, width, height)
+	}
+	if s.detail != nil {
+		drawDetailModal(screen, s.detail, width, height)
 	}
 }
 

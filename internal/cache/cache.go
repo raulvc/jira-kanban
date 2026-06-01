@@ -12,12 +12,13 @@ import (
 
 // Entry is a cached issue stored by key.
 type Entry struct {
-	Key      string   `json:"key"`
-	Summary  string   `json:"summary"`
-	StatusID string   `json:"status_id"`
-	Status   string   `json:"status"`
-	Assignee string   `json:"assignee"`
-	Labels   []string `json:"labels"`
+	Key         string   `json:"key"`
+	Summary     string   `json:"summary"`
+	StatusID    string   `json:"status_id"`
+	Status      string   `json:"status"`
+	Assignee    string   `json:"assignee"`
+	Labels      []string `json:"labels"`
+	Description string   `json:"description"`
 }
 
 // Store holds the full cache state for a single board.

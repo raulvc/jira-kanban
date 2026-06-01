@@ -485,12 +485,13 @@ func issuesToEntries(issues []issue) []cache.Entry {
 	entries := make([]cache.Entry, len(issues))
 	for i, iss := range issues {
 		entries[i] = cache.Entry{
-			Key:      iss.Key,
-			Summary:  iss.Fields.Summary,
-			StatusID: strings.TrimSpace(iss.Fields.Status.ID),
-			Status:   strings.TrimSpace(iss.Fields.Status.Name),
-			Assignee: assigneeName(iss),
-			Labels:   iss.Fields.Labels,
+			Key:         iss.Key,
+			Summary:     iss.Fields.Summary,
+			StatusID:    strings.TrimSpace(iss.Fields.Status.ID),
+			Status:      strings.TrimSpace(iss.Fields.Status.Name),
+			Assignee:    assigneeName(iss),
+			Labels:      iss.Fields.Labels,
+			Description: parseDescription(iss.Fields.Description),
 		}
 	}
 	return entries
