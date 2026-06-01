@@ -2,6 +2,8 @@
 
 A fast, lightweight Jira kanban board for the terminal.
 
+![](demo.gif)
+
 Jira's web interface is resource-heavy and slow — it easily consumes hundreds of megabytes of RAM and still feels sluggish. `jira-kanban` gives you a snappy, keyboard-driven view of your board that stays out of your way and uses a fraction of the resources.
 
 ## Install

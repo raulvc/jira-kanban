@@ -344,7 +344,7 @@ func drawColumnCards(screen tcell.Screen, fd *jira.Board, s *boardState, ci int,
 			tcell.StyleDefault.Foreground(colMuted).Background(colBg), w-2)
 		return
 	}
-	curCard := s.cardIdx[ci]
+	curCard := min(s.cardIdx[ci], len(col.Issues)-1)
 	scroll := s.scrollOffset[ci]
 
 	if active {
