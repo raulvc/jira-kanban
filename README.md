@@ -50,6 +50,7 @@ jira-kanban --board 17   # flag form
 |-----|--------|
 | `←` / `→` | Move between columns |
 | `↑` / `↓` | Move between cards |
+| `f` | Filter by assignee |
 | `enter` | View issue details |
 | `t` | Transition issue (with search filter) |
 | `o` | Open issue in browser |

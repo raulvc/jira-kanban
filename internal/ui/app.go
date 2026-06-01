@@ -43,6 +43,9 @@ func Run(client *jira.Client, boardID int, data jira.Board, baseURL string, need
 	})
 
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if state.filter != nil {
+			return handleFilterInput(ctx, event)
+		}
 		if state.modal != nil {
 			return handleModalInput(ctx, event)
 		}
@@ -150,6 +153,11 @@ func handleBoardRune(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 			openTransitionModal(ctx)
 		}
 		return nil
+	case 'f':
+		if ctx.state.filter == nil {
+			ctx.state.filter = newFilterState(ctx.state.data)
+		}
+		return nil
 	}
 	return event
 }
@@ -179,6 +187,45 @@ func handleModalInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case tcell.KeyRune:
 		m.typeRune(event.Rune())
+		return nil
+	}
+	return nil
+}
+
+// ── filter input ──────────────────────────────────────────────────────────
+
+func handleFilterInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
+	f := ctx.state.filter
+	switch event.Key() {
+	case tcell.KeyEscape:
+		ctx.state.memberFilter = ""
+		ctx.state.filter = nil
+		return nil
+	case tcell.KeyUp:
+		f.moveSelection(-1)
+		return nil
+	case tcell.KeyDown:
+		f.moveSelection(1)
+		return nil
+	case tcell.KeyEnter:
+		items := f.filtered()
+		if f.selected >= 0 && f.selected < len(items) {
+			ctx.state.memberFilter = items[f.selected]
+		}
+		ctx.state.filter = nil
+		return nil
+	case tcell.KeyCtrlU:
+		ctx.state.memberFilter = ""
+		ctx.state.filter = nil
+		return nil
+	case tcell.KeyCtrlC:
+		ctx.app.Stop()
+		return nil
+	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		f.backspace()
+		return nil
+	case tcell.KeyRune:
+		f.typeRune(event.Rune())
 		return nil
 	}
 	return nil

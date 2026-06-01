@@ -32,7 +32,10 @@ func run() error {
 
 	parseBoardFlag(&cfg)
 
-	if err := config.Ensure(&cfg); err != nil {
+	if err := config.Ensure(&cfg, func() error {
+		client := jira.NewClient(cfg.BaseURL, cfg.Email, cfg.Token)
+		return client.Ping(cfg.BoardID)
+	}); err != nil {
 		return err
 	}
 

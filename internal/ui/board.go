@@ -26,6 +26,8 @@ type boardState struct {
 	syncTotal    int
 	spinnerFrame int
 	modal        *modalState
+	filter       *filterState
+	memberFilter string
 }
 
 func newBoardState(data jira.Board) *boardState {
@@ -156,6 +158,25 @@ func (s *boardState) reload(data jira.Board) {
 	s.syncTotal = 0
 }
 
+// filteredData returns a copy of the board data with only cards matching
+// the current memberFilter. If no filter is set, it returns the original data.
+func (s *boardState) filteredData() jira.Board {
+	if s.memberFilter == "" {
+		return s.data
+	}
+	result := jira.Board{Name: s.data.Name}
+	for _, col := range s.data.Columns {
+		fc := jira.Column{Name: col.Name}
+		for _, card := range col.Issues {
+			if card.Assignee == s.memberFilter {
+				fc.Issues = append(fc.Issues, card)
+			}
+		}
+		result.Columns = append(result.Columns, fc)
+	}
+	return result
+}
+
 // ── viewport helpers ────────────────────────────────────────────────────────
 
 func visibleCols(width, totalCols int) int {
@@ -184,15 +205,19 @@ func viewportStart(width, totalCols, activeCol int) int {
 
 // drawBoard renders the complete board into the given screen region.
 func drawBoard(screen tcell.Screen, s *boardState, boardID, x, y, width, height int) {
-	if len(s.data.Columns) == 0 || width < 5 || height < 3 {
+	fd := s.filteredData()
+	if len(fd.Columns) == 0 || width < 5 || height < 3 {
 		return
 	}
 	drawStatusBar(screen, s, boardID, x, y, width)
 	drawHelpBar(screen, x, y+height-1, width)
-	drawColumns(screen, s, x, y+2, width, height-3)
+	drawColumns(screen, s, &fd, x, y+2, width, height-3)
 
 	if s.modal != nil {
 		drawModal(screen, s.modal, width, height)
+	}
+	if s.filter != nil {
+		drawFilterModal(screen, s.filter, width, height)
 	}
 }
 
@@ -241,16 +266,20 @@ func drawStatusBar(screen tcell.Screen, s *boardState, boardID, x, y, width int)
 	if s.statusMsg != "" {
 		text = s.statusMsg
 	} else {
+		fd := s.filteredData()
 		n := 0
 		ci := 0
-		if s.colIdx < len(s.data.Columns) {
-			n = len(s.data.Columns[s.colIdx].Issues)
+		if s.colIdx < len(fd.Columns) {
+			n = len(fd.Columns[s.colIdx].Issues)
 			if n > 0 {
 				ci = s.cardIdx[s.colIdx] + 1
 			}
 		}
 		text = fmt.Sprintf(" %s  board=%d  col %d/%d  card %d/%d",
-			s.data.Name, boardID, s.colIdx+1, len(s.data.Columns), ci, n)
+			fd.Name, boardID, s.colIdx+1, len(fd.Columns), ci, n)
+		if s.memberFilter != "" {
+			text += fmt.Sprintf("  filter: %s", s.memberFilter)
+		}
 	}
 	drawText(screen, x, y, text, style, width)
 }
@@ -259,23 +288,23 @@ func drawHelpBar(screen tcell.Screen, x, y, width int) {
 	style := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
 	fillRow(screen, x, y, width, style)
 	drawText(screen, x, y,
-		" ←/→ cols • ↑/↓ cards • enter view • t transition • o browser • r refresh • q quit",
+		" ←/→ cols • ↑/↓ cards • f filter • t transition • o browser • r refresh • q quit",
 		style, width)
 }
 
-func drawColumns(screen tcell.Screen, s *boardState, x, y, width, height int) {
+func drawColumns(screen tcell.Screen, s *boardState, fd *jira.Board, x, y, width, height int) {
 	if height < 1 {
 		return
 	}
-	vc := visibleCols(width, len(s.data.Columns))
-	start := viewportStart(width, len(s.data.Columns), s.colIdx)
+	vc := visibleCols(width, len(fd.Columns))
+	start := viewportStart(width, len(fd.Columns), s.colIdx)
 	colW := width / vc
 	remainder := width - colW*vc
 	cx := x
 
 	for vi := range vc {
 		ci := start + vi
-		if ci >= len(s.data.Columns) {
+		if ci >= len(fd.Columns) {
 			break
 		}
 		thisW := colW
@@ -283,8 +312,8 @@ func drawColumns(screen tcell.Screen, s *boardState, x, y, width, height int) {
 			thisW++
 		}
 		active := ci == s.colIdx
-		drawColumnHeader(screen, s.data.Columns[ci], active, cx, y-1, thisW)
-		drawColumnCards(screen, s, ci, active, cx, y, thisW, height)
+		drawColumnHeader(screen, fd.Columns[ci], active, cx, y-1, thisW)
+		drawColumnCards(screen, fd, s, ci, active, cx, y, thisW, height)
 
 		if vi < vc-1 {
 			sepStyle := tcell.StyleDefault.Foreground(colPanel).Background(colBg)
@@ -308,8 +337,8 @@ func drawColumnHeader(screen tcell.Screen, col jira.Column, active bool, x, y, w
 	drawText(screen, x, y, fmt.Sprintf(" %s  %d", name, len(col.Issues)), style, w)
 }
 
-func drawColumnCards(screen tcell.Screen, s *boardState, ci int, active bool, x, y, w, h int) {
-	col := s.data.Columns[ci]
+func drawColumnCards(screen tcell.Screen, fd *jira.Board, s *boardState, ci int, active bool, x, y, w, h int) {
+	col := fd.Columns[ci]
 	if len(col.Issues) == 0 {
 		drawText(screen, x+1, y, "No issues",
 			tcell.StyleDefault.Foreground(colMuted).Background(colBg), w-2)

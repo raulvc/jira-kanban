@@ -5,6 +5,7 @@ package config
 import (
 	"bufio"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -55,52 +56,27 @@ func Save(path string, cfg Config) error {
 }
 
 // Ensure interactively prompts for any missing fields in cfg and persists
-// the result when changes are made.
-func Ensure(cfg *Config) error {
-	reader := bufio.NewReader(os.Stdin)
-	changed := false
-
-	if strings.TrimSpace(cfg.BaseURL) == "" {
-		v, err := prompt(reader, "Jira base URL", "https://your-company.atlassian.net", false)
+// the result when changes are made. If verify is non-nil, it is called
+// before saving; if it returns an error the user is re-prompted.
+func Ensure(cfg *Config, verify func() error) error {
+	for {
+		changed, err := promptFields(cfg)
 		if err != nil {
 			return err
 		}
-		cfg.BaseURL = strings.TrimRight(v, "/")
-		changed = true
-	}
-
-	if strings.TrimSpace(cfg.Email) == "" {
-		v, err := prompt(reader, "Jira email", "you@company.com", false)
-		if err != nil {
-			return err
+		if !changed {
+			return nil
 		}
-		cfg.Email = v
-		changed = true
-	}
-
-	if strings.TrimSpace(cfg.Token) == "" {
-		v, err := prompt(reader, "Jira API token (https://id.atlassian.com/manage-profile/security/api-tokens)", "", true)
-		if err != nil {
-			return err
+		if verify != nil {
+			fmt.Fprintln(os.Stderr, "  Verifying credentials…")
+			if err := verify(); err != nil {
+				fmt.Fprintf(os.Stderr, "  ✗ %s\n", err)
+				fmt.Fprintln(os.Stderr, "  Please re-enter your configuration.")
+				*cfg = Config{}
+				continue
+			}
+			fmt.Fprintln(os.Stderr, "  ✓ Connection successful")
 		}
-		cfg.Token = v
-		changed = true
-	}
-
-	if cfg.BoardID <= 0 {
-		v, err := prompt(reader, "Board ID", "e.g. 123", false)
-		if err != nil {
-			return err
-		}
-		id, err := strconv.Atoi(strings.TrimSpace(v))
-		if err != nil {
-			return fmt.Errorf("invalid board ID %q: %w", v, err)
-		}
-		cfg.BoardID = id
-		changed = true
-	}
-
-	if changed {
 		p, err := Path()
 		if err != nil {
 			return err
@@ -109,11 +85,81 @@ func Ensure(cfg *Config) error {
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "Config saved to %s\n", p)
+		return nil
 	}
-	return nil
+}
+
+func promptFields(cfg *Config) (bool, error) {
+	reader := bufio.NewReader(os.Stdin)
+	changed := false
+
+	if strings.TrimSpace(cfg.BaseURL) == "" {
+		v, err := promptValidated(reader, "Jira base URL", "https://your-company.atlassian.net", false, validateURL)
+		if err != nil {
+			return false, err
+		}
+		cfg.BaseURL = v
+		changed = true
+	}
+
+	if strings.TrimSpace(cfg.Email) == "" {
+		v, err := promptValidated(reader, "Jira email", "you@company.com", false, validateEmail)
+		if err != nil {
+			return false, err
+		}
+		cfg.Email = v
+		changed = true
+	}
+
+	if strings.TrimSpace(cfg.Token) == "" {
+		v, err := prompt(reader, "Jira API token (https://id.atlassian.com/manage-profile/security/api-tokens)", "", true)
+		if err != nil {
+			return false, err
+		}
+		cfg.Token = v
+		changed = true
+	}
+
+	if cfg.BoardID <= 0 {
+		v, err := prompt(reader, "Board ID", "e.g. 123", false)
+		if err != nil {
+			return false, err
+		}
+		id, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil {
+			return false, fmt.Errorf("invalid board ID %q: %w", v, err)
+		}
+		cfg.BoardID = id
+		changed = true
+	}
+
+	return changed, nil
+}
+
+func validateURL(s string) (string, error) {
+	s = strings.TrimRight(s, "/")
+	u, err := url.Parse(s)
+	if err != nil {
+		return "", fmt.Errorf("invalid URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", fmt.Errorf("URL must start with http:// or https://")
+	}
+	return s, nil
+}
+
+func validateEmail(s string) (string, error) {
+	if !strings.Contains(s, "@") || !strings.Contains(s[strings.Index(s, "@")+1:], ".") {
+		return "", fmt.Errorf("invalid email address")
+	}
+	return s, nil
 }
 
 func prompt(reader *bufio.Reader, label, suggestion string, secret bool) (string, error) {
+	return promptValidated(reader, label, suggestion, secret, nil)
+}
+
+func promptValidated(reader *bufio.Reader, label, suggestion string, secret bool, validate func(string) (string, error)) (string, error) {
 	for {
 		p := label
 		if suggestion != "" {
@@ -137,9 +183,19 @@ func prompt(reader *bufio.Reader, label, suggestion string, secret bool) (string
 			value = strings.TrimSpace(v)
 		}
 
-		if value != "" {
-			return value, nil
+		if value == "" {
+			fmt.Fprintln(os.Stderr, "  Value is required.")
+			continue
 		}
-		fmt.Fprintln(os.Stderr, "  Value is required.")
+
+		if validate != nil {
+			clean, err := validate(value)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  %s\n", err)
+				continue
+			}
+			return clean, nil
+		}
+		return value, nil
 	}
 }
