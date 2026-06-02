@@ -19,6 +19,7 @@ type Entry struct {
 	Assignee    string   `json:"assignee"`
 	Labels      []string `json:"labels"`
 	Description string   `json:"description"`
+	Epic        string   `json:"epic"`
 }
 
 // Store holds the full cache state for a single board.

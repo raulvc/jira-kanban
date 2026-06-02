@@ -47,7 +47,24 @@ type issue struct {
 		} `json:"assignee"`
 		Labels      []string         `json:"labels"`
 		Description json.RawMessage   `json:"description"`
+		Parent      *issueParent      `json:"parent"`
+		Epic        *issueEpic        `json:"epic"`
 	} `json:"fields"`
+}
+
+// issueParent is the parent link returned for sub-tasks.
+type issueParent struct {
+	Key    string `json:"key"`
+	Fields struct {
+		Summary string `json:"summary"`
+	} `json:"fields"`
+}
+
+// issueEpic is the epic link returned for epic-linked issues.
+type issueEpic struct {
+	Key      string `json:"key"`
+	Name     string `json:"name"`
+	Summary string `json:"summary"`
 }
 
 // Card is the application-level representation of an issue on the board.
@@ -58,6 +75,7 @@ type Card struct {
 	Assignee    string
 	Labels      []string
 	Description string
+	Epic        string
 }
 
 // Column groups cards under a named board column.
@@ -156,8 +174,6 @@ func renderADFNode(b *strings.Builder, node adfNode) {
 	}
 }
 
-// parseDescription extracts plain text from a raw JSON description field.
-// The Jira API can return description as null, a plain string, or an ADF object.
 func parseDescription(raw json.RawMessage) string {
 	if len(raw) == 0 || string(raw) == "null" {
 		return ""

@@ -382,6 +382,9 @@ func drawColumnCards(screen tcell.Screen, fd *jira.Board, s *boardState, ci int,
 
 func cardHeight(card jira.Card, colWidth int) int {
 	h := wrappedLineCount(card.Summary, colWidth-3)
+	if card.Epic != "" {
+		h++
+	}
 	if len(card.Labels) > 0 {
 		h++
 	}
@@ -419,6 +422,7 @@ func drawCard(screen tcell.Screen, card jira.Card, selected bool, x, drawY, w, c
 
 	lineY := drawY
 	lineY = drawCardSummary(screen, card, style, x, lineY, w, clipTop, clipBot)
+	lineY = drawCardEpic(screen, card, x, lineY, w, clipTop, clipBot)
 	lineY = drawCardLabels(screen, card, x, lineY, w, clipTop, clipBot)
 	drawCardFooter(screen, card, style, x, lineY, w, clipTop, clipBot)
 }
@@ -437,6 +441,20 @@ func drawCardSummary(screen tcell.Screen, card jira.Card, style tcell.Style, x, 
 		lineY++
 	}
 	return lineY
+}
+
+func drawCardEpic(screen tcell.Screen, card jira.Card, x, lineY, w, clipTop, clipBot int) int {
+	if card.Epic == "" || lineY < clipTop || lineY >= clipBot {
+		if card.Epic != "" {
+			return lineY + 1
+		}
+		return lineY
+	}
+	ec := epicColor(card.Epic)
+	epStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(ec).Bold(true)
+	short := truncStr(card.Epic, w-4)
+	drawText(screen, x+1, lineY, " "+short+" ", epStyle, w-2)
+	return lineY + 1
 }
 
 func drawCardLabels(screen tcell.Screen, card jira.Card, x, lineY, w, clipTop, clipBot int) int {

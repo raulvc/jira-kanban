@@ -100,6 +100,7 @@ func (c *Client) GetIssue(key string) (Card, error) {
 		Assignee:    assigneeName(resp),
 		Labels:      resp.Fields.Labels,
 		Description: parseDescription(resp.Fields.Description),
+		Epic:        epicName(resp),
 	}, nil
 }
 

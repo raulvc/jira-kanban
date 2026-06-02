@@ -117,10 +117,21 @@ type issue struct {
 			DisplayName string `json:"displayName"`
 		} `json:"assignee"`
 		Labels []string `json:"labels"`
+		Epic   *struct {
+			Key      string `json:"key"`
+			Summary string `json:"summary"`
+			Name     string `json:"name"`
+		} `json:"epic"`
+		Parent *struct {
+			Key    string `json:"key"`
+			Fields struct {
+				Summary string `json:"summary"`
+			} `json:"fields"`
+		} `json:"parent"`
 	} `json:"fields"`
 }
 
-func makeIssue(key, summary, statusID, statusName, assignee string, labels ...string) issue {
+func makeIssueWithEpic(key, summary, statusID, statusName, assignee, epic string, labels ...string) issue {
 	var iss issue
 	iss.Key = key
 	iss.Fields.Summary = summary
@@ -132,24 +143,31 @@ func makeIssue(key, summary, statusID, statusName, assignee string, labels ...st
 		}{DisplayName: assignee}
 	}
 	iss.Fields.Labels = labels
+	if epic != "" {
+		iss.Fields.Epic = &struct {
+			Key      string `json:"key"`
+			Summary string `json:"summary"`
+			Name     string `json:"name"`
+		}{Key: "ENG-" + epic, Summary: epic, Name: epic}
+	}
 	return iss
 }
 
 func allIssues() []issue {
 	return []issue{
-		makeIssue("ENG-101", "Implement user auth flow", "2", "To Do", "Alice", "security"),
-		makeIssue("ENG-102", "Add pagination to list API", "2", "To Do", "", "backend"),
-		makeIssue("ENG-103", "Fix mobile nav overlap", "2", "To Do", "Bob", "bug", "frontend"),
-		makeIssue("ENG-104", "Write migration script for DB", "2", "To Do", "Carol"),
-		makeIssue("ENG-201", "Refactor payment service", "3", "In Progress", "Alice", "tech-debt"),
-		makeIssue("ENG-202", "Update CI pipeline", "3", "In Progress", "Dave", "devops"),
-		makeIssue("ENG-203", "Add rate limiting middleware", "3", "In Progress", "Bob", "security", "backend"),
-		makeIssue("ENG-204", "Implement webhook retry logic", "3", "In Progress", ""),
-		makeIssue("ENG-301", "Review SSO integration PR", "5", "In Review", "Carol", "security"),
-		makeIssue("ENG-302", "Review logging changes", "5", "In Review", "Dave"),
-		makeIssue("ENG-401", "Deploy v2.1 to staging", "4", "Done", "Alice", "release"),
-		makeIssue("ENG-402", "Set up monitoring dashboards", "4", "Done", "Dave", "devops"),
-		makeIssue("ENG-403", "Migrate to new CDN", "4", "Done", "Carol", "infra"),
+		makeIssueWithEpic("ENG-101", "Implement user auth flow", "2", "To Do", "Alice", "Platform Auth", "security"),
+		makeIssueWithEpic("ENG-102", "Add pagination to list API", "2", "To Do", "", "API V2", "backend"),
+		makeIssueWithEpic("ENG-103", "Fix mobile nav overlap", "2", "To Do", "Bob", "Mobile UX", "bug", "frontend"),
+		makeIssueWithEpic("ENG-104", "Write migration script for DB", "2", "To Do", "Carol", "DB Migration"),
+		makeIssueWithEpic("ENG-201", "Refactor payment service", "3", "In Progress", "Alice", "Payment V2", "tech-debt"),
+		makeIssueWithEpic("ENG-202", "Update CI pipeline", "3", "In Progress", "Dave", "DevOps Infra", "devops"),
+		makeIssueWithEpic("ENG-203", "Add rate limiting middleware", "3", "In Progress", "Bob", "Platform Auth", "security", "backend"),
+		makeIssueWithEpic("ENG-204", "Implement webhook retry logic", "3", "In Progress", "", "API V2"),
+		makeIssueWithEpic("ENG-301", "Review SSO integration PR", "5", "In Review", "Carol", "Platform Auth", "security"),
+		makeIssueWithEpic("ENG-302", "Review logging changes", "5", "In Review", "Dave", "DevOps Infra"),
+		makeIssueWithEpic("ENG-401", "Deploy v2.1 to staging", "4", "Done", "Alice", "Release V2.1", "release"),
+		makeIssueWithEpic("ENG-402", "Set up monitoring dashboards", "4", "Done", "Dave", "DevOps Infra", "devops"),
+		makeIssueWithEpic("ENG-403", "Migrate to new CDN", "4", "Done", "Carol", "DevOps Infra", "infra"),
 	}
 }
 
@@ -199,6 +217,7 @@ func issueDetail(iss issue) any {
 			"assignee":    iss.Fields.Assignee,
 			"labels":      iss.Fields.Labels,
 			"description": desc,
+			"epic":        iss.Fields.Epic,
 		},
 	}
 }

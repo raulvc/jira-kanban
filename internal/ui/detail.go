@@ -26,6 +26,9 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 	contentH++ // blank
 	contentH++ // status
 	contentH++ // assignee
+	if d.card.Epic != "" {
+		contentH++ // epic
+	}
 	if len(d.card.Labels) > 0 {
 		contentH++ // labels
 	}
@@ -117,6 +120,15 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 	}
 	drawText(screen, ox+padding+10, cy, assigneeText, assigneeStyle, maxCW-10)
 	cy++
+
+	// Epic
+	if d.card.Epic != "" {
+		drawText(screen, ox+padding, cy, "Epic: ", keyStyle, maxCW)
+		epBadge := " " + truncStr(d.card.Epic, maxCW-8) + " "
+		epStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(epicColor(d.card.Epic)).Bold(true)
+		drawText(screen, ox+padding+6, cy, epBadge, epStyle, maxCW-6)
+		cy++
+	}
 
 	// Labels
 	if len(d.card.Labels) > 0 {

@@ -708,3 +708,51 @@ func TestIssueNum(t *testing.T) {
 		}
 	}
 }
+
+func TestEpicName(t *testing.T) {
+	tests := []struct {
+		name string
+		iss  issue
+		want string
+	}{
+		{
+			"epic via Epic field",
+			func() issue {
+				iss := issue{Key: "P-1"}
+				iss.Fields.Epic = &issueEpic{Key: "EP-1", Summary: "Platform Auth"}
+				return iss
+			}(),
+			"Platform Auth",
+		},
+		{
+			"epic via Parent field",
+			func() issue {
+				iss := issue{Key: "P-2"}
+				iss.Fields.Parent = &issueParent{Key: "EP-2", Fields: struct{ Summary string `json:"summary"` }{Summary: "Migration"}}
+				return iss
+			}(),
+			"Migration",
+		},
+		{
+			"no epic",
+			issue{Key: "P-3"},
+			"",
+		},
+		{
+			"epic Name fallback",
+			func() issue {
+				iss := issue{Key: "P-4"}
+				iss.Fields.Epic = &issueEpic{Name: "Epic Name Only"}
+				return iss
+			}(),
+			"Epic Name Only",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := epicName(tt.iss); got != tt.want {
+				t.Errorf("epicName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

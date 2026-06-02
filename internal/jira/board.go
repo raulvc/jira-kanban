@@ -492,6 +492,7 @@ func issuesToEntries(issues []issue) []cache.Entry {
 			Assignee:    assigneeName(iss),
 			Labels:      iss.Fields.Labels,
 			Description: parseDescription(iss.Fields.Description),
+		Epic:        epicName(iss),
 		}
 	}
 	return entries
@@ -510,6 +511,9 @@ func entriesToIssues(entries map[string]cache.Entry) []issue {
 			iss.Fields.Assignee = &struct {
 				DisplayName string `json:"displayName"`
 			}{DisplayName: e.Assignee}
+		}
+		if e.Epic != "" {
+			iss.Fields.Epic = &issueEpic{Summary: e.Epic}
 		}
 		issues = append(issues, iss)
 	}
@@ -572,6 +576,7 @@ func buildBoard(boardName string, mappings []columnMapping, issues []issue) Boar
 			Status:   iss.Fields.Status.Name,
 			Assignee: assigneeName(iss),
 			Labels:   iss.Fields.Labels,
+			Epic:     epicName(iss),
 		}
 
 		colName := resolveColumn(iss, statusIDToCol, statusNameToCol)
@@ -619,6 +624,19 @@ func assigneeName(iss issue) string {
 		return iss.Fields.Assignee.DisplayName
 	}
 	return "Unassigned"
+}
+
+func epicName(iss issue) string {
+	if iss.Fields.Epic != nil && iss.Fields.Epic.Summary != "" {
+		return iss.Fields.Epic.Summary
+	}
+	if iss.Fields.Epic != nil && iss.Fields.Epic.Name != "" {
+		return iss.Fields.Epic.Name
+	}
+	if iss.Fields.Parent != nil && iss.Fields.Parent.Key != "" {
+		return iss.Fields.Parent.Fields.Summary
+	}
+	return ""
 }
 
 // issueNum extracts the numeric suffix from a key like "PROJ-1234".

@@ -72,6 +72,18 @@ func TestDetailState_Close(t *testing.T) {
 	}
 }
 
+func TestEpicColor(t *testing.T) {
+	c1 := epicColor("Platform Auth")
+	c2 := epicColor("Platform Auth")
+	if c1 != c2 {
+		t.Fatal("same epic name should return same color")
+	}
+	c3 := epicColor("")
+	if c3 != colMuted {
+		t.Fatal("empty epic should return muted color")
+	}
+}
+
 func TestDetailState_ScrollClamp(t *testing.T) {
 	d := &detailState{card: jira.Card{Key: "P-1", Description: "short"}, scroll: 0}
 	if d.scroll != 0 {

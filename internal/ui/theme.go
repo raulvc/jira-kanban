@@ -22,6 +22,7 @@ var (
 
 var labelPalette = []tcell.Color{colRed, colOrange, colCyan, colGreen, colYellow, colViolet, colBlue}
 var assigneePalette = []tcell.Color{colCyan, colGreen, colOrange, colYellow, colViolet, colBlue}
+var epicPalette = []tcell.Color{colViolet, colBlue, colCyan, colGreen, colYellow, colOrange, colRed}
 
 // labelColor returns a deterministic color for a label string.
 func labelColor(label string) tcell.Color {
@@ -35,6 +36,14 @@ func assigneeColor(name string) tcell.Color {
 		return colMuted
 	}
 	return assigneePalette[strhash(name)%len(assigneePalette)]
+}
+
+// epicColor returns a deterministic color for an epic name.
+func epicColor(name string) tcell.Color {
+	if name == "" {
+		return colMuted
+	}
+	return epicPalette[strhash(name)%len(epicPalette)]
 }
 
 func strhash(s string) int {
