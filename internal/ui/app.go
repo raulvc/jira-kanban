@@ -337,6 +337,11 @@ func handleDetailInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyEscape:
 		ctx.state.detail = nil
 		return nil
+	case tcell.KeyRune:
+		if event.Rune() == 'q' {
+			ctx.state.detail = nil
+			return nil
+		}
 	case tcell.KeyUp:
 		if d.scroll > 0 {
 			d.scroll--
