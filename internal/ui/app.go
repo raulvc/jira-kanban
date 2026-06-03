@@ -110,6 +110,12 @@ func handleBoardInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyCtrlC:
 		ctx.app.Stop()
 		return nil
+	case tcell.KeyEscape:
+		if ctx.state.memberFilter != "" {
+			ctx.state.memberFilter = ""
+			ctx.state.clampSelection()
+		}
+		return nil
 	case tcell.KeyLeft:
 		ctx.state.moveColumn(-1)
 		return nil
@@ -202,6 +208,7 @@ func handleFilterInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyEscape:
 		ctx.state.memberFilter = ""
 		ctx.state.filter = nil
+		ctx.state.clampSelection()
 		return nil
 	case tcell.KeyUp:
 		f.moveSelection(-1)
@@ -215,10 +222,12 @@ func handleFilterInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 			ctx.state.memberFilter = items[f.selected]
 		}
 		ctx.state.filter = nil
+		ctx.state.clampSelection()
 		return nil
 	case tcell.KeyCtrlU:
 		ctx.state.memberFilter = ""
 		ctx.state.filter = nil
+		ctx.state.clampSelection()
 		return nil
 	case tcell.KeyCtrlC:
 		ctx.app.Stop()
