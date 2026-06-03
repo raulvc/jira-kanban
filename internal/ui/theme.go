@@ -18,11 +18,19 @@ var (
 	colCardSel = tcell.NewRGBColor(34, 50, 73)
 	colYellow  = tcell.NewRGBColor(230, 195, 132)
 	colViolet  = tcell.NewRGBColor(149, 127, 184)
+	colPink    = tcell.NewRGBColor(200, 130, 170)
+	colTeal    = tcell.NewRGBColor(90, 195, 170)
+	colSky     = tcell.NewRGBColor(100, 175, 230)
+	colLime    = tcell.NewRGBColor(170, 210, 90)
+	colGold    = tcell.NewRGBColor(220, 175, 80)
+	colCoral   = tcell.NewRGBColor(240, 130, 100)
+	colMauve   = tcell.NewRGBColor(170, 120, 190)
+	colAqua    = tcell.NewRGBColor(80, 190, 210)
 )
 
 var labelPalette = []tcell.Color{colRed, colOrange, colCyan, colGreen, colYellow, colViolet, colBlue}
 var assigneePalette = []tcell.Color{colCyan, colGreen, colOrange, colYellow, colViolet, colBlue}
-var epicPalette = []tcell.Color{colViolet, colBlue, colCyan, colGreen, colYellow, colOrange, colRed}
+var epicPalette = []tcell.Color{colViolet, colBlue, colCyan, colGreen, colYellow, colOrange, colRed, colPink, colTeal, colSky, colLime, colGold, colCoral, colMauve, colAqua}
 
 // labelColor returns a deterministic color for a label string.
 func labelColor(label string) tcell.Color {

@@ -20,6 +20,7 @@ type Entry struct {
 	Labels      []string `json:"labels"`
 	Description string   `json:"description"`
 	Epic        string   `json:"epic"`
+	Rank        string   `json:"rank,omitempty"`
 }
 
 // Store holds the full cache state for a single board.
@@ -80,8 +81,14 @@ func (s *Store) Save() error {
 }
 
 // Merge upserts entries into the cache and updates FetchedAt.
+// If a new entry has no Rank but an existing entry does, the Rank is preserved.
 func (s *Store) Merge(entries []Entry, fetchedAt time.Time) {
 	for _, e := range entries {
+		if e.Rank == "" {
+			if existing, ok := s.Issues[e.Key]; ok && existing.Rank != "" {
+				e.Rank = existing.Rank
+			}
+		}
 		s.Issues[e.Key] = e
 	}
 	s.FetchedAt = fetchedAt

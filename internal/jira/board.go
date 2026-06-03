@@ -1,6 +1,7 @@
 package jira
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"sort"
@@ -32,10 +33,11 @@ type SyncProgress struct {
 // On warm start it returns cached data immediately; the caller should run
 // a background RefreshBoard to keep the cache up to date.
 func (c *Client) FetchBoard(boardID int, onProgress func(Progress)) (Board, bool, error) {
-	columns, boardName, err := c.fetchColumns(boardID)
+	columns, boardName, rankFieldID, err := c.fetchColumns(boardID)
 	if err != nil {
 		return Board{}, false, err
 	}
+	c.RankFieldID = rankFieldID
 	statusIDs := visibleStatusIDs(columns)
 
 	store, err := cache.Load(boardID)
@@ -44,7 +46,7 @@ func (c *Client) FetchBoard(boardID int, onProgress func(Progress)) (Board, bool
 	}
 
 	if store.IsEmpty() {
-		issues, fetchErr := c.fetchIssues(boardID, statusIDs, true, onProgress)
+		issues, fetchErr := c.fetchIssues(boardID, statusIDs, rankFieldID, true, onProgress)
 		if fetchErr != nil {
 			return Board{}, false, fetchErr
 		}
@@ -179,10 +181,11 @@ func (c *Client) UpdateCachedStatus(boardID int, issueKey, statusID, statusName 
 // RefreshBoard re-syncs the board using the same stub-diff strategy
 // as FetchBoard. Intended for in-TUI refresh.
 func (c *Client) RefreshBoard(boardID int, onProgress func(SyncProgress)) (Board, error) {
-	columns, boardName, err := c.fetchColumns(boardID)
+	columns, boardName, rankFieldID, err := c.fetchColumns(boardID)
 	if err != nil {
 		return Board{}, err
 	}
+	c.RankFieldID = rankFieldID
 	statusIDs := visibleStatusIDs(columns)
 
 	store, loadErr := cache.Load(boardID)
@@ -257,10 +260,15 @@ func (c *Client) fetchChangedIssues(boardID int, statusIDs []string, since time.
 	for startAt := 0; ; startAt += 50 {
 		u := fmt.Sprintf("%s/rest/agile/1.0/board/%d/issue?startAt=%d&maxResults=50&jql=%s",
 			c.BaseURL, boardID, startAt, url.QueryEscape(jql))
-		var resp boardIssuesResponse
-		if err := c.getJSON(u, &resp); err != nil {
+		raw, err := c.getRaw(u)
+		if err != nil {
 			return nil, fmt.Errorf("changed issues (offset %d): %w", startAt, err)
 		}
+		var resp boardIssuesResponse
+		if err := json.Unmarshal(raw, &resp); err != nil {
+			return nil, fmt.Errorf("changed issues (offset %d): %w", startAt, err)
+		}
+		extractRanks(resp.Issues, raw, c.RankFieldID)
 		all = append(all, resp.Issues...)
 		if onProgress != nil {
 			onProgress(SyncProgress{
@@ -317,12 +325,12 @@ func (c *Client) fetchKeyStatuses(keys []string, onProgress func(SyncProgress)) 
 // onProgress reports the cumulative number of issues fetched so far.
 func (c *Client) fetchIssuesByKeys(keys []string, onProgress func(fetched int)) ([]issue, error) {
 	const batchSize = 50
-	// Jira Cloud allows 100 GET/sec burst; cap concurrency to stay well within limits.
 	const maxConcurrent = 20
 	nBatches := (len(keys) + batchSize - 1) / batchSize
 
 	type batchResult struct {
 		issues []issue
+		raw    []byte
 		err    error
 		idx    int
 	}
@@ -345,23 +353,35 @@ func (c *Client) fetchIssuesByKeys(keys []string, onProgress func(fetched int)) 
 			jql := "key in (" + strings.Join(batch, ",") + ")"
 			u := fmt.Sprintf("%s/rest/api/3/search/jql", c.BaseURL)
 
+			fields := []string{"summary", "status", "assignee", "labels"}
+			if c.RankFieldID > 0 {
+				fields = append(fields, fmt.Sprintf("customfield_%d", c.RankFieldID))
+			}
+
 			var pageIssues []issue
 			var token string
+			var allRaw []byte
 			for {
 				reqBody := map[string]any{
 					"jql":        jql,
 					"maxResults": len(batch),
-					"fields":     []string{"summary", "status", "assignee", "labels"},
+					"fields":     fields,
 				}
 				if token != "" {
 					reqBody["nextPageToken"] = token
 				}
+				raw, postErr := c.postJSONRaw(u, reqBody)
+				if postErr != nil {
+					results[i] = batchResult{err: fmt.Errorf("batch %d: %w", i, postErr), idx: i}
+					return
+				}
 				var resp searchJqlResponse
-				if err := c.postJSONResponse(u, reqBody, &resp); err != nil {
+				if err := json.Unmarshal(raw, &resp); err != nil {
 					results[i] = batchResult{err: fmt.Errorf("batch %d: %w", i, err), idx: i}
 					return
 				}
 				pageIssues = append(pageIssues, resp.Issues...)
+				allRaw = append(allRaw, raw...)
 				if onProgress != nil {
 					onProgress(int(fetched.Add(int64(len(resp.Issues)))))
 				}
@@ -370,19 +390,19 @@ func (c *Client) fetchIssuesByKeys(keys []string, onProgress func(fetched int)) 
 				}
 				token = resp.NextPageToken
 			}
-			results[i] = batchResult{issues: pageIssues, idx: i}
+			results[i] = batchResult{issues: pageIssues, raw: allRaw, idx: i}
 		}(i)
 	}
 
 	wg.Wait()
 
-	// Collect in order, return first error
 	var firstErr error
 	ordered := make([][]issue, nBatches)
 	for _, r := range results {
 		if r.err != nil && firstErr == nil {
 			firstErr = r.err
 		}
+		extractRanks(r.issues, r.raw, c.RankFieldID)
 		ordered[r.idx] = r.issues
 	}
 	if firstErr != nil {
@@ -409,11 +429,11 @@ func visibleStatusIDs(columns []columnMapping) []string {
 }
 
 // fetchColumns returns the column layout from the board configuration endpoint.
-func (c *Client) fetchColumns(boardID int) ([]columnMapping, string, error) {
+func (c *Client) fetchColumns(boardID int) ([]columnMapping, string, int, error) {
 	cfgURL := fmt.Sprintf("%s/rest/agile/1.0/board/%d/configuration", c.BaseURL, boardID)
 	var resp boardConfigResponse
 	if err := c.getJSON(cfgURL, &resp); err != nil {
-		return nil, "", fmt.Errorf("board config: %w", err)
+		return nil, "", 0, fmt.Errorf("board config: %w", err)
 	}
 	var cols []columnMapping
 	for _, col := range resp.ColumnConfig.Columns {
@@ -431,12 +451,12 @@ func (c *Client) fetchColumns(boardID int) ([]columnMapping, string, error) {
 			StatusNames: statusNames,
 		})
 	}
-	return cols, resp.Name, nil
+	return cols, resp.Name, resp.Ranking.RankCustomFieldID, nil
 }
 
 // fetchIssues pages through the board issues endpoint, filtered to only
 // the given visible status IDs.
-func (c *Client) fetchIssues(boardID int, statusIDs []string, cold bool, onProgress func(Progress)) ([]issue, error) {
+func (c *Client) fetchIssues(boardID int, statusIDs []string, rankFieldID int, cold bool, onProgress func(Progress)) ([]issue, error) {
 	jql := "ORDER BY rank ASC"
 	if len(statusIDs) > 0 {
 		jql = "status in (" + strings.Join(statusIDs, ",") + ") " + jql
@@ -446,10 +466,15 @@ func (c *Client) fetchIssues(boardID int, statusIDs []string, cold bool, onProgr
 	for startAt := 0; ; startAt += 50 {
 		u := fmt.Sprintf("%s/rest/agile/1.0/board/%d/issue?startAt=%d&maxResults=50&jql=%s",
 			c.BaseURL, boardID, startAt, url.QueryEscape(jql))
-		var resp boardIssuesResponse
-		if err := c.getJSON(u, &resp); err != nil {
+		raw, err := c.getRaw(u)
+		if err != nil {
 			return nil, fmt.Errorf("board issues (offset %d): %w", startAt, err)
 		}
+		var resp boardIssuesResponse
+		if err := json.Unmarshal(raw, &resp); err != nil {
+			return nil, fmt.Errorf("board issues (offset %d): %w", startAt, err)
+		}
+		extractRanks(resp.Issues, raw, rankFieldID)
 		all = append(all, resp.Issues...)
 
 		if onProgress != nil {
@@ -492,7 +517,8 @@ func issuesToEntries(issues []issue) []cache.Entry {
 			Assignee:    assigneeName(iss),
 			Labels:      iss.Fields.Labels,
 			Description: parseDescription(iss.Fields.Description),
-		Epic:        epicName(iss),
+			Epic:        epicName(iss),
+			Rank:        iss.Rank,
 		}
 	}
 	return entries
@@ -515,6 +541,7 @@ func entriesToIssues(entries map[string]cache.Entry) []issue {
 		if e.Epic != "" {
 			iss.Fields.Epic = &issueEpic{Summary: e.Epic}
 		}
+		iss.Rank = e.Rank
 		issues = append(issues, iss)
 	}
 	return issues
@@ -577,6 +604,7 @@ func buildBoard(boardName string, mappings []columnMapping, issues []issue) Boar
 			Assignee: assigneeName(iss),
 			Labels:   iss.Fields.Labels,
 			Epic:     epicName(iss),
+			Rank:     iss.Rank,
 		}
 
 		colName := resolveColumn(iss, statusIDToCol, statusNameToCol)
@@ -590,20 +618,29 @@ func buildBoard(boardName string, mappings []columnMapping, issues []issue) Boar
 	}
 
 	lastCol := len(columns) - 1
-	for i := range columns {
-		if i == lastCol {
-			sort.SliceStable(columns[i].Issues, func(a, b int) bool {
-				return issueNum(columns[i].Issues[a].Key) > issueNum(columns[i].Issues[b].Key)
-			})
-			const maxFinal = 20
-			if len(columns[i].Issues) > maxFinal {
-				columns[i].Issues = columns[i].Issues[:maxFinal]
-			}
-		} else {
-			sort.SliceStable(columns[i].Issues, func(a, b int) bool {
-				return columns[i].Issues[a].Key < columns[i].Issues[b].Key
-			})
+	if lastCol >= 0 {
+		const maxFinal = 20
+		if len(columns[lastCol].Issues) > maxFinal {
+			columns[lastCol].Issues = columns[lastCol].Issues[:maxFinal]
 		}
+	}
+
+	// Rank-ordered sort: issues with a rank value come first (sorted by rank),
+	// issues without rank fall back to key order.
+	for i := range columns {
+		sort.SliceStable(columns[i].Issues, func(a, b int) bool {
+			ca, cb := columns[i].Issues[a], columns[i].Issues[b]
+			if ca.Rank != "" && cb.Rank != "" {
+				return ca.Rank < cb.Rank
+			}
+			if ca.Rank != "" {
+				return true
+			}
+			if cb.Rank != "" {
+				return false
+			}
+			return ca.Key < cb.Key
+		})
 	}
 
 	return Board{Name: boardName, Columns: columns}
