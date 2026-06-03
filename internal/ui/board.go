@@ -185,6 +185,28 @@ func (s *boardState) filteredData() jira.Board {
 	return result
 }
 
+// clampSelection ensures cardIdx values stay within the bounds of the
+// currently visible (filtered) issues. Call after the filter changes.
+func (s *boardState) clampSelection() {
+	fd := s.filteredData()
+	for i := range s.cardIdx {
+		if i >= len(fd.Columns) {
+			continue
+		}
+		n := len(fd.Columns[i].Issues)
+		if n == 0 {
+			s.cardIdx[i] = 0
+			continue
+		}
+		if s.cardIdx[i] >= n {
+			s.cardIdx[i] = n - 1
+		}
+		if s.cardIdx[i] < 0 {
+			s.cardIdx[i] = 0
+		}
+	}
+}
+
 // ── viewport helpers ────────────────────────────────────────────────────────
 
 func visibleCols(width, totalCols int) int {
