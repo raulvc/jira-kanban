@@ -2,6 +2,7 @@ package jira
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -17,6 +18,9 @@ type boardConfigResponse struct {
 			} `json:"statuses"`
 		} `json:"columns"`
 	} `json:"columnConfig"`
+	Ranking struct {
+		RankCustomFieldID int `json:"rankCustomFieldId"`
+	} `json:"ranking"`
 }
 
 // boardIssuesResponse is the JSON shape returned by GET /rest/agile/1.0/board/{id}/issue.
@@ -45,11 +49,45 @@ type issue struct {
 		Assignee *struct {
 			DisplayName string `json:"displayName"`
 		} `json:"assignee"`
-		Labels      []string         `json:"labels"`
-		Description json.RawMessage   `json:"description"`
-		Parent      *issueParent      `json:"parent"`
-		Epic        *issueEpic        `json:"epic"`
+		Labels      []string       `json:"labels"`
+		Description json.RawMessage `json:"description"`
+		Parent      *issueParent    `json:"parent"`
+		Epic        *issueEpic      `json:"epic"`
 	} `json:"fields"`
+	Rank string `json:"-"`
+}
+
+// extractRanks parses the raw API response to find each issue's rank custom
+// field value and sets it on the corresponding issue. The board configuration
+// provides rankCustomFieldId which maps to a field named customfield_XXXXX.
+func extractRanks(issues []issue, raw []byte, rankFieldID int) {
+	if rankFieldID <= 0 || len(raw) == 0 {
+		return
+	}
+	fieldName := fmt.Sprintf("customfield_%d", rankFieldID)
+	var resp struct {
+		Issues []struct {
+			Key    string `json:"key"`
+			Fields map[string]json.RawMessage `json:"fields"`
+		} `json:"issues"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return
+	}
+	rankMap := make(map[string]string, len(resp.Issues))
+	for _, ri := range resp.Issues {
+		if raw, ok := ri.Fields[fieldName]; ok {
+			var s string
+			if err := json.Unmarshal(raw, &s); err == nil {
+				rankMap[ri.Key] = s
+			}
+		}
+	}
+	for i := range issues {
+		if r, ok := rankMap[issues[i].Key]; ok {
+			issues[i].Rank = r
+		}
+	}
 }
 
 // issueParent is the parent link returned for sub-tasks.
@@ -76,6 +114,7 @@ type Card struct {
 	Labels      []string
 	Description string
 	Epic        string
+	Rank        string
 }
 
 // Column groups cards under a named board column.

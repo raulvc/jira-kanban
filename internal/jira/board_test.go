@@ -151,7 +151,7 @@ func TestBuildBoard_LastColumnCapped(t *testing.T) {
 	}
 }
 
-func TestBuildBoard_SortsByKey(t *testing.T) {
+func TestBuildBoard_PreservesRankOrder(t *testing.T) {
 	mappings := []columnMapping{
 		{Name: "To Do", StatusIDs: []string{"1"}, StatusNames: []string{"To Do"}},
 		{Name: "Done", StatusIDs: []string{"2"}, StatusNames: []string{"Done"}},
@@ -161,14 +161,17 @@ func TestBuildBoard_SortsByKey(t *testing.T) {
 		makeIssue("P-1", "a", "1", "To Do", ""),
 		makeIssue("P-2", "b", "1", "To Do", ""),
 	}
+	issues[0].Rank = "0|i0000z:"
+	issues[1].Rank = "0|i0000a:"
+	issues[2].Rank = "0|i0000m:"
 	board := buildBoard("B", mappings, issues)
 	todo := board.Columns[0]
 	if todo.Issues[0].Key != "P-1" || todo.Issues[1].Key != "P-2" || todo.Issues[2].Key != "P-3" {
-		t.Fatalf("non-last columns should sort ascending by key: %v", []string{todo.Issues[0].Key, todo.Issues[1].Key, todo.Issues[2].Key})
+		t.Fatalf("issues with rank should sort by rank: %v", []string{todo.Issues[0].Key, todo.Issues[1].Key, todo.Issues[2].Key})
 	}
 }
 
-func TestBuildBoard_LastColumnSortsDescending(t *testing.T) {
+func TestBuildBoard_LastColumnPreservesRankOrder(t *testing.T) {
 	mappings := []columnMapping{
 		{Name: "To Do", StatusIDs: []string{"1"}, StatusNames: []string{"To Do"}},
 		{Name: "Done", StatusIDs: []string{"2"}, StatusNames: []string{"Done"}},
@@ -178,10 +181,13 @@ func TestBuildBoard_LastColumnSortsDescending(t *testing.T) {
 		makeIssue("P-3", "c", "2", "Done", ""),
 		makeIssue("P-2", "b", "2", "Done", ""),
 	}
+	issues[0].Rank = "0|i0000m:"
+	issues[1].Rank = "0|i0000a:"
+	issues[2].Rank = "0|i0000z:"
 	board := buildBoard("B", mappings, issues)
 	done := board.Columns[len(board.Columns)-1]
-	if done.Issues[0].Key != "P-3" || done.Issues[1].Key != "P-2" || done.Issues[2].Key != "P-1" {
-		t.Fatalf("last column should sort descending: %v", []string{done.Issues[0].Key, done.Issues[1].Key, done.Issues[2].Key})
+	if done.Issues[0].Key != "P-3" || done.Issues[1].Key != "P-1" || done.Issues[2].Key != "P-2" {
+		t.Fatalf("last column with rank should sort by rank: %v", []string{done.Issues[0].Key, done.Issues[1].Key, done.Issues[2].Key})
 	}
 }
 

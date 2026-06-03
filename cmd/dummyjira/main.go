@@ -102,6 +102,9 @@ func boardConfig() any {
 				},
 			},
 		},
+		"ranking": map[string]any{
+			"rankCustomFieldId": 10020,
+		},
 	}
 }
 
