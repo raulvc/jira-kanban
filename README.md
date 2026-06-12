@@ -56,6 +56,7 @@ jira-kanban --board 17   # flag form
 | `enter` | View issue details |
 | `t` | Transition issue (with search filter) |
 | `o` | Open issue in browser |
+| `a` | Assign issue (from board or detail view) |
 | `r` | Refresh board |
 | `q` | Quit |
 
@@ -65,6 +66,7 @@ jira-kanban --board 17   # flag form
 - **Warm start** — returns cached data instantly, then syncs changes in the background.
 - **Incremental sync** — only fetches issues that changed since the last sync, instead of re-downloading the entire board.
 - **Optimistic transitions** — moving a card updates the UI immediately, then persists to Jira in the background.
+- **Assignee management** — assign or unassign issues directly from the board or detail view. The current user is highlighted with a ★ marker.
 
 Cache is stored at `$XDG_CACHE_HOME/jira-kanban/<board-id>.json`.
 
