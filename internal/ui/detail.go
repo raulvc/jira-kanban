@@ -9,10 +9,11 @@ import (
 // detailState tracks the issue detail overlay.
 // A nil detailState means no detail modal is open.
 type detailState struct {
-	card    jira.Card
-	loading bool
-	err     string
-	scroll  int
+	card      jira.Card
+	loading   bool
+	err       string
+	scroll    int
+	maxScroll int
 }
 
 // drawDetailModal renders a centered issue detail overlay over the board.
@@ -84,7 +85,7 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 	// Close hint at bottom
 	closeY := oy + boxH - 2
 	closeStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
-	closeText := " Esc to close "
+	closeText := " Esc/q to close "
 	drawText(screen, ox+(boxW-len([]rune(closeText)))/2, closeY, closeText, closeStyle, boxW)
 
 	// Content
@@ -153,15 +154,57 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 	// Description or loading/error
 	descAreaTop := cy
 	descAreaBot := oy + boxH - 3 // leave room for close hint + padding
+	descAreaH := descAreaBot - descAreaTop
 
 	if d.loading {
 		drawText(screen, ox+padding, cy, "Loading description…", loadingStyle, maxCW)
+		d.maxScroll = 0
 	} else if d.err != "" {
 		drawText(screen, ox+padding, cy, truncStr(d.err, maxCW), errStyle, maxCW)
+		d.maxScroll = 0
 	} else if d.card.Description != "" {
-		drawWrappedText(screen, d.card.Description, ox+padding, descAreaTop, maxCW, descAreaBot, d.scroll, descStyle)
+		descW := contentW - 2
+		totalDescLines := wrappedLineCount(d.card.Description, descW)
+		needsScrollbar := totalDescLines > descAreaH
+		if needsScrollbar {
+			descW--
+		}
+		totalDescLines = wrappedLineCount(d.card.Description, descW)
+		d.maxScroll = max(0, totalDescLines-descAreaH)
+		if d.scroll > d.maxScroll {
+			d.scroll = d.maxScroll
+		}
+		drawWrappedText(screen, d.card.Description, ox+padding, descAreaTop, descW, descAreaBot, d.scroll, descStyle)
+		if needsScrollbar {
+			trackStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
+			thumbStyle := tcell.StyleDefault.Foreground(colBlue).Background(colPanel)
+			drawScrollbar(screen, ox+padding+descW+1, descAreaTop, descAreaH, d.scroll, totalDescLines, trackStyle, thumbStyle)
+		}
 	} else {
 		drawText(screen, ox+padding, cy, "No description", tcell.StyleDefault.Foreground(colMuted).Background(colPanel), maxCW)
+		d.maxScroll = 0
+	}
+}
+
+// drawScrollbar draws a vertical scrollbar on the right side of a region.
+func drawScrollbar(screen tcell.Screen, x, y, viewH, scroll, totalLines int, trackStyle, thumbStyle tcell.Style) {
+	if totalLines <= viewH || viewH <= 0 {
+		return
+	}
+	thumbH := max(1, viewH*viewH/totalLines)
+	maxScroll := totalLines - viewH
+	thumbTop := y
+	if maxScroll > 0 {
+		thumbTop = y + scroll*(viewH-thumbH)/maxScroll
+	}
+	for row := y; row < y+viewH; row++ {
+		ch := '│'
+		s := trackStyle
+		if row >= thumbTop && row < thumbTop+thumbH {
+			ch = '█'
+			s = thumbStyle
+		}
+		screen.SetContent(x, row, ch, nil, s)
 	}
 }
 

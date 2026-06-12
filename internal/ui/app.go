@@ -357,7 +357,9 @@ func handleDetailInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		}
 		return nil
 	case tcell.KeyDown:
-		d.scroll++
+		if d.scroll < d.maxScroll {
+			d.scroll++
+		}
 		return nil
 	case tcell.KeyCtrlC:
 		ctx.app.Stop()

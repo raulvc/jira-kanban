@@ -40,7 +40,7 @@ func TestWrappedLineCount(t *testing.T) {
 		{"hello", 5, 1},
 		{"hello", 3, 2},
 		{"hello", 1, 5},
-		{"hello", 0, 1},
+		{"hello", 0, 5},
 		{"ab", 2, 1},
 		{"abc", 2, 2},
 		{"abcdef", 3, 2},

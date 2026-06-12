@@ -35,19 +35,11 @@ func truncStr(s string, maxLen int) string {
 	return string(runes[:maxLen-1]) + "…"
 }
 
-// wrappedLineCount returns how many terminal rows text occupies when hard-wrapped
-// at width columns.
+// wrappedLineCount returns how many terminal rows text occupies when word-wrapped
+// at width columns, respecting existing newlines.
 func wrappedLineCount(text string, width int) int {
 	if width <= 0 {
-		return 1
+		width = 1
 	}
-	n := len([]rune(text))
-	if n == 0 {
-		return 1
-	}
-	lines := n / width
-	if n%width != 0 {
-		lines++
-	}
-	return lines
+	return len(wrapText(text, width))
 }
