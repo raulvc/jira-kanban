@@ -97,7 +97,7 @@ func toLower(s string) string {
 }
 
 // drawFilterModal renders a centered member filter picker over the board.
-func drawFilterModal(screen tcell.Screen, f *filterState, screenW, screenH int) {
+func drawFilterModal(screen tcell.Screen, f *filterState, screenW, screenH int, currentUser string) {
 	const padding = 2
 	contentW := 40
 	items := f.filtered()
@@ -123,6 +123,7 @@ func drawFilterModal(screen tcell.Screen, f *filterState, screenW, screenH int) 
 	searchPlaceholder := tcell.StyleDefault.Foreground(colMuted).Background(colBg)
 	itemStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
 	selStyle := tcell.StyleDefault.Foreground(colFg).Background(colCardSel).Bold(true)
+	meStyle := tcell.StyleDefault.Foreground(colGold).Background(colPanel).Bold(true)
 
 	for row := oy; row < oy+boxH; row++ {
 		fillRow(screen, ox, row, boxW, bgStyle)
@@ -155,9 +156,16 @@ func drawFilterModal(screen tcell.Screen, f *filterState, screenW, screenH int) 
 	for i := scrollStart; i < len(items) && i < scrollStart+maxVisible; i++ {
 		style := itemStyle
 		prefix := "  "
+		if items[i] == currentUser {
+			style = meStyle
+			prefix = "★ "
+		}
 		if i == f.selected {
 			style = selStyle
 			prefix = "▸ "
+			if items[i] == currentUser {
+				prefix = "▸★"
+			}
 		}
 		fillRow(screen, ox+1, cy, boxW-2, style)
 		text := truncStr(items[i], contentW-3)

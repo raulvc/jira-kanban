@@ -85,7 +85,7 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 	// Close hint at bottom
 	closeY := oy + boxH - 2
 	closeStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
-	closeText := " Esc/q to close "
+	closeText := " Esc/q to close • a assign "
 	drawText(screen, ox+(boxW-len([]rune(closeText)))/2, closeY, closeText, closeStyle, boxW)
 
 	// Content

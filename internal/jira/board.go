@@ -178,6 +178,17 @@ func (c *Client) UpdateCachedStatus(boardID int, issueKey, statusID, statusName 
 	_ = store.Save()
 }
 
+// UpdateCachedAssignee persists an assignee change to the cache file
+// so that subsequent syncs don't revert an optimistic UI update.
+func (c *Client) UpdateCachedAssignee(boardID int, issueKey, assignee string) {
+	store, err := cache.Load(boardID)
+	if err != nil {
+		return
+	}
+	store.UpdateAssignee(issueKey, assignee)
+	_ = store.Save()
+}
+
 // RefreshBoard re-syncs the board using the same stub-diff strategy
 // as FetchBoard. Intended for in-TUI refresh.
 func (c *Client) RefreshBoard(boardID int, onProgress func(SyncProgress)) (Board, error) {

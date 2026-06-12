@@ -105,6 +105,16 @@ func (s *Store) UpdateStatus(key, statusID, statusName string) {
 	s.Issues[key] = e
 }
 
+// UpdateAssignee changes the assignee of a cached issue.
+func (s *Store) UpdateAssignee(key, assignee string) {
+	e, ok := s.Issues[key]
+	if !ok {
+		return
+	}
+	e.Assignee = assignee
+	s.Issues[key] = e
+}
+
 // IsEmpty reports whether the cache has any issues.
 func (s *Store) IsEmpty() bool {
 	return len(s.Issues) == 0
