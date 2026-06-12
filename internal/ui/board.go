@@ -266,11 +266,11 @@ func drawBoard(screen tcell.Screen, s *boardState, boardID, x, y, width, height 
 	if s.filter != nil {
 		drawFilterModal(screen, s.filter, width, height, s.currentUser)
 	}
-	if s.assigneePicker != nil {
-		drawAssigneePicker(screen, s.assigneePicker, width, height, s.currentUser)
-	}
 	if s.detail != nil {
 		drawDetailModal(screen, s.detail, width, height)
+	}
+	if s.assigneePicker != nil {
+		drawAssigneePicker(screen, s.assigneePicker, width, height, s.currentUser)
 	}
 }
 
