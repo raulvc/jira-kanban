@@ -15,20 +15,22 @@ var spinnerFrames = []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧
 
 // boardState holds the mutable navigation state of the board.
 type boardState struct {
-	data         jira.Board
-	colIdx       int
-	cardIdx      []int
-	scrollOffset []int
-	statusMsg    string
-	syncing      bool
-	syncPhase    string
-	syncFetched  int
-	syncTotal    int
-	spinnerFrame int
-	modal        *modalState
-	filter       *filterState
-	detail       *detailState
-	memberFilter string
+	data           jira.Board
+	colIdx         int
+	cardIdx        []int
+	scrollOffset   []int
+	statusMsg      string
+	syncing        bool
+	syncPhase      string
+	syncFetched    int
+	syncTotal      int
+	spinnerFrame   int
+	modal          *modalState
+	filter         *filterState
+	detail         *detailState
+	assigneePicker *assigneePickerState
+	memberFilter   string
+	currentUser    string
 }
 
 func newBoardState(data jira.Board) *boardState {
@@ -152,6 +154,21 @@ func (s *boardState) moveIssueToStatus(issueKey, toStatus string) {
 	s.data.Columns[dstCol].Issues = append(s.data.Columns[dstCol].Issues, card)
 }
 
+// updateAssignee optimistically sets the assignee on the given issue
+// in the board data and the detail modal (if open).
+func (s *boardState) updateAssignee(issueKey, displayName string) {
+	for ci := range s.data.Columns {
+		for ii := range s.data.Columns[ci].Issues {
+			if s.data.Columns[ci].Issues[ii].Key == issueKey {
+				s.data.Columns[ci].Issues[ii].Assignee = displayName
+			}
+		}
+	}
+	if s.detail != nil && s.detail.card.Key == issueKey {
+		s.detail.card.Assignee = displayName
+	}
+}
+
 func (s *boardState) reload(data jira.Board) {
 	s.data = data
 	if s.colIdx >= len(data.Columns) {
@@ -247,7 +264,10 @@ func drawBoard(screen tcell.Screen, s *boardState, boardID, x, y, width, height 
 		drawModal(screen, s.modal, width, height)
 	}
 	if s.filter != nil {
-		drawFilterModal(screen, s.filter, width, height)
+		drawFilterModal(screen, s.filter, width, height, s.currentUser)
+	}
+	if s.assigneePicker != nil {
+		drawAssigneePicker(screen, s.assigneePicker, width, height, s.currentUser)
 	}
 	if s.detail != nil {
 		drawDetailModal(screen, s.detail, width, height)
@@ -321,7 +341,7 @@ func drawHelpBar(screen tcell.Screen, x, y, width int) {
 	style := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
 	fillRow(screen, x, y, width, style)
 	drawText(screen, x, y,
-		" ←/→ cols • ↑/↓ cards • f filter • t transition • o browser • r refresh • q quit",
+		" ←/→ cols • ↑/↓ cards • f filter • a assign • t transition • o browser • r refresh • q quit",
 		style, width)
 }
 

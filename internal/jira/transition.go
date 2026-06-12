@@ -59,11 +59,21 @@ func (c *Client) DoTransition(issueKey, transitionID string) error {
 
 // postJSON performs an authenticated POST with a JSON body.
 func (c *Client) postJSON(rawURL string, body any) error {
+	return c.sendJSON(http.MethodPost, rawURL, body)
+}
+
+// putJSON performs an authenticated PUT with a JSON body.
+func (c *Client) putJSON(rawURL string, body any) error {
+	return c.sendJSON(http.MethodPut, rawURL, body)
+}
+
+// sendJSON performs an authenticated HTTP request with a JSON body.
+func (c *Client) sendJSON(method, rawURL string, body any) error {
 	data, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest(http.MethodPost, rawURL, bytes.NewReader(data))
+	req, err := http.NewRequest(method, rawURL, bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
