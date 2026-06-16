@@ -2,9 +2,11 @@
 
 A fast, lightweight Jira kanban board for the terminal.
 
-<img src="docs/assets/demo_basics.gif" width="49%"> <img src="docs/assets/demo_filter_assign.gif" width="49%">
+<img src="docs/assets/demo_basics.gif" width="100%">
 
-<img src="docs/assets/demo_create_subtask.gif" width="49%">
+<img src="docs/assets/demo_filter_assign.gif" width="100%">
+
+<img src="docs/assets/demo_create_subtask.gif" width="100%">
 
 Jira's web interface is resource-heavy and slow — it easily consumes hundreds of megabytes of RAM and still feels sluggish. `jira-kanban` gives you a snappy, keyboard-driven view of your board that stays out of your way and uses a fraction of the resources.
 
