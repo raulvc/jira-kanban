@@ -2,7 +2,9 @@
 
 A fast, lightweight Jira kanban board for the terminal.
 
-![](demo.gif)
+<img src="docs/assets/demo_basics.gif" width="49%"> <img src="docs/assets/demo_filter_assign.gif" width="49%">
+
+<img src="docs/assets/demo_create_subtask.gif" width="49%">
 
 Jira's web interface is resource-heavy and slow — it easily consumes hundreds of megabytes of RAM and still feels sluggish. `jira-kanban` gives you a snappy, keyboard-driven view of your board that stays out of your way and uses a fraction of the resources.
 
@@ -57,7 +59,7 @@ jira-kanban --board 17   # flag form
 | `t` | Transition issue (with search filter) |
 | `o` | Open issue in browser |
 | `a` | Assign issue (from board or detail view) |
-| `c` | Create issue |
+| `c` | Create issue (from board) / Create subtask (from detail view) |
 | `r` | Refresh board |
 | `q` | Quit |
 
@@ -68,6 +70,7 @@ jira-kanban --board 17   # flag form
 - **Incremental sync** — only fetches issues that changed since the last sync, instead of re-downloading the entire board.
 - **Optimistic transitions** — moving a card updates the UI immediately, then persists to Jira in the background.
 - **Assignee management** — assign or unassign issues directly from the board or detail view. The current user is highlighted with a ★ marker.
+- **Create issues & subtasks** — create new issues from the board view, and subtasks from the detail modal. Rich text descriptions with URL linking and code blocks are supported.
 
 Cache is stored at `$XDG_CACHE_HOME/jira-kanban/<board-id>.json`.
 

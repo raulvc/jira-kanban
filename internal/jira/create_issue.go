@@ -2,6 +2,7 @@ package jira
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 )
@@ -53,7 +54,7 @@ func (c *Client) SearchEpics(projectKey, query string) ([]EpicItem, error) {
 	jql += " ORDER BY key DESC"
 
 	u := fmt.Sprintf("%s/rest/api/3/search/jql?jql=%s&maxResults=100&fields=summary",
-		c.BaseURL, jql)
+		c.BaseURL, url.QueryEscape(jql))
 	var resp searchJqlResponse
 	if err := c.getJSON(u, &resp); err != nil {
 		return nil, fmt.Errorf("search epics for project %s: %w", projectKey, err)
