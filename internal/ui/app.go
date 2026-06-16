@@ -387,6 +387,18 @@ func handleDetailInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 			d.scroll++
 		}
 		return nil
+	case tcell.KeyPgUp:
+		d.scroll = max(0, d.scroll-max(1, d.viewH-1))
+		return nil
+	case tcell.KeyPgDn:
+		d.scroll = min(d.maxScroll, d.scroll+max(1, d.viewH-1))
+		return nil
+	case tcell.KeyHome:
+		d.scroll = 0
+		return nil
+	case tcell.KeyEnd:
+		d.scroll = d.maxScroll
+		return nil
 	case tcell.KeyCtrlC:
 		ctx.app.Stop()
 		return nil

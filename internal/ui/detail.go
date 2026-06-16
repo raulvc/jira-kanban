@@ -14,6 +14,7 @@ type detailState struct {
 	err       string
 	scroll    int
 	maxScroll int
+	viewH     int
 }
 
 // drawDetailModal renders a centered issue detail overlay over the board.
@@ -159,6 +160,7 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 	descAreaTop := cy
 	descAreaBot := oy + boxH - 3 // leave room for close hint + padding
 	descAreaH := descAreaBot - descAreaTop
+	d.viewH = descAreaH
 
 	if d.loading {
 		drawText(screen, ox+padding, cy, "Loading description…", loadingStyle, maxCW)
@@ -213,22 +215,6 @@ func drawScrollbar(screen tcell.Screen, x, y, viewH, scroll, totalLines int, tra
 			s = thumbStyle
 		}
 		screen.SetContent(x, row, ch, nil, s)
-	}
-}
-
-// drawWrappedText renders a multi-line string with word wrapping and vertical scrolling.
-func drawWrappedText(screen tcell.Screen, text string, x, y, width, clipBot, scroll int, style tcell.Style) {
-	lines := wrapText(text, width)
-	if scroll >= len(lines) {
-		return
-	}
-	cy := y
-	for i := scroll; i < len(lines); i++ {
-		if cy >= clipBot {
-			break
-		}
-		drawText(screen, x, cy, lines[i], style, width)
-		cy++
 	}
 }
 
