@@ -57,6 +57,7 @@ jira-kanban --board 17   # flag form
 | `t` | Transition issue (with search filter) |
 | `o` | Open issue in browser |
 | `a` | Assign issue (from board or detail view) |
+| `c` | Create issue |
 | `r` | Refresh board |
 | `q` | Quit |
 

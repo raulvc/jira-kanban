@@ -56,6 +56,9 @@ func Run(client *jira.Client, boardID int, data jira.Board, baseURL string, need
 		if state.assigneePicker != nil {
 			return handleAssigneePickerInput(ctx, event)
 		}
+		if state.createIssue != nil {
+			return handleCreateIssueInput(ctx, event)
+		}
 		if state.detail != nil {
 			return handleDetailInput(ctx, event)
 		}
@@ -179,6 +182,11 @@ func handleBoardRune(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case 'a':
 		openAssigneePicker(ctx)
+		return nil
+	case 'c':
+		if ctx.state.createIssue == nil && ctx.state.projectKey != "" {
+			openCreateIssue(ctx)
+		}
 		return nil
 	}
 	return event
@@ -526,6 +534,300 @@ func executeAssign(ctx *appContext, accountID, displayName, issueKey string) {
 		ctx.client.UpdateCachedAssignee(ctx.boardID, issueKey, displayName)
 		ctx.app.QueueUpdateDraw(func() {
 			ctx.state.statusMsg = fmt.Sprintf(" %s → %s", issueKey, displayName)
+		})
+	}()
+}
+
+// ── create issue ───────────────────────────────────────────────────────────
+
+func openCreateIssue(ctx *appContext) {
+	epicFreq := make(map[string]int)
+	for _, col := range ctx.state.data.Columns {
+		for _, card := range col.Issues {
+			if card.Epic != "" {
+				epicFreq[card.Epic]++
+			}
+		}
+	}
+
+	c := newCreateIssueState(ctx.state.projectKey)
+	c.epicFreq = epicFreq
+	ctx.state.createIssue = c
+
+	go func() {
+		types, err := ctx.client.GetIssueTypes(c.projectKey)
+		ctx.app.QueueUpdateDraw(func() {
+			if ctx.state.createIssue != c {
+				return
+			}
+			if err != nil {
+				c.errMsg = err.Error()
+				return
+			}
+			if len(types) > 0 {
+				sortTypesByPriority(types)
+				c.types = types
+				c.typeIdx = 0
+			}
+		})
+	}()
+
+	go func() {
+		epics, err := ctx.client.SearchEpics(c.projectKey, "")
+		ctx.app.QueueUpdateDraw(func() {
+			if ctx.state.createIssue != c {
+				return
+			}
+			if err != nil {
+				return
+			}
+			sortEpicsByFreq(epics, epicFreq)
+			c.epics = epics
+			c.epicLoaded = true
+		})
+	}()
+}
+
+func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
+	c := ctx.state.createIssue
+	if c.creating {
+		return nil
+	}
+	switch event.Key() {
+	case tcell.KeyEscape:
+		c.stopDebounce()
+		ctx.state.createIssue = nil
+		return nil
+	case tcell.KeyTab:
+		c.field = (c.field + 1) % cfFieldCount
+		c.clampCur()
+		return nil
+	case tcell.KeyBacktab:
+		c.field = (c.field - 1 + cfFieldCount) % cfFieldCount
+		c.clampCur()
+		return nil
+	case tcell.KeyUp:
+		if c.field == cfEpic && c.epicKey == "" {
+			if c.epicSel > 0 {
+				c.epicSel--
+			} else {
+				c.field = cfDescription
+				c.clampCur()
+			}
+		} else if c.field == cfDescription {
+			lines := descLines(c.desc, descWrapW)
+			curLine := c.descCurLine(lines)
+			if curLine > 0 {
+				// Move cursor to previous line
+				c.descMoveUp(lines)
+				c.descAutoScroll(descWrapW)
+			} else if c.descScroll > 0 {
+				c.descScroll--
+			} else {
+				c.field = cfSummary
+				c.clampCur()
+			}
+		} else {
+			c.field = (c.field - 1 + cfFieldCount) % cfFieldCount
+			c.clampCur()
+		}
+		return nil
+	case tcell.KeyDown:
+		if c.field == cfEpic && c.epicKey == "" {
+			items := c.filteredEpics()
+			if c.epicSel < len(items)-1 {
+				c.epicSel++
+			} else {
+				c.field = (c.field + 1) % cfFieldCount
+				c.clampCur()
+			}
+		} else if c.field == cfDescription {
+			lines := descLines(c.desc, descWrapW)
+			curLine := c.descCurLine(lines)
+			if curLine < len(lines)-1 {
+				c.descMoveDown(lines)
+				c.descAutoScroll(descWrapW)
+			} else if c.descScroll < max(0, len(lines)-descVisH) {
+				c.descScroll++
+			} else {
+				c.field = cfEpic
+				c.clampCur()
+			}
+		} else {
+			c.field = (c.field + 1) % cfFieldCount
+			c.clampCur()
+		}
+		return nil
+	case tcell.KeyLeft:
+		if c.field == cfType {
+			c.cycleType(-1)
+			return nil
+		}
+		switch c.field {
+		case cfSummary:
+			if c.sumCur > 0 {
+				c.sumCur--
+			}
+		case cfEpic:
+			if c.epicCur > 0 {
+				c.epicCur--
+			}
+		case cfDescription:
+			if c.descCur > 0 {
+				c.descCur--
+				c.descAutoScroll(descWrapW)
+			}
+		}
+		return nil
+	case tcell.KeyRight:
+		if c.field == cfType {
+			c.cycleType(1)
+			return nil
+		}
+		switch c.field {
+		case cfSummary:
+			if c.sumCur < len([]rune(c.summary)) {
+				c.sumCur++
+			}
+		case cfEpic:
+			if c.epicCur < len([]rune(c.epicQuery)) {
+				c.epicCur++
+			}
+		case cfDescription:
+			if c.descCur < len([]rune(c.desc)) {
+				c.descCur++
+				c.descAutoScroll(descWrapW)
+			}
+		}
+		return nil
+	case tcell.KeyEnter:
+		if c.field == cfEpic {
+			c.handleEnter()
+			return nil
+		}
+		if c.field == cfDescription {
+			c.handleNewline()
+			return nil
+		}
+		executeCreateIssue(ctx)
+		return nil
+	case tcell.KeyCtrlU:
+		if c.field == cfEpic {
+			c.epicKey = ""
+			c.epicName = ""
+			c.epicQuery = ""
+			c.epicCur = 0
+			c.epicSel = 0
+			return nil
+		}
+		return nil
+	case tcell.KeyHome:
+		switch c.field {
+		case cfSummary:
+			c.sumCur = 0
+		case cfDescription:
+			c.descCur = 0
+			c.descAutoScroll(descWrapW)
+		case cfEpic:
+			c.epicCur = 0
+		}
+		return nil
+	case tcell.KeyEnd:
+		switch c.field {
+		case cfSummary:
+			c.sumCur = len([]rune(c.summary))
+		case cfDescription:
+			c.descCur = len([]rune(c.desc))
+			c.descAutoScroll(descWrapW)
+		case cfEpic:
+			c.epicCur = len([]rune(c.epicQuery))
+		}
+		return nil
+	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		c.backspace()
+		return nil
+	case tcell.KeyDelete:
+		c.deleteForward()
+		return nil
+	case tcell.KeyRune:
+		if event.Rune() == 'q' && (c.field == cfType || (c.field == cfEpic && c.epicKey != "")) {
+			c.stopDebounce()
+			ctx.state.createIssue = nil
+			return nil
+		}
+		c.typeRune(event.Rune())
+		if c.field == cfEpic {
+			startEpicSearch(ctx, c)
+		}
+		return nil
+	}
+	return nil
+}
+
+func startEpicSearch(ctx *appContext, c *createIssueState) {
+	if c.debounce != nil {
+		c.debounce.Stop()
+	}
+
+	if c.epicLoaded && len(c.filteredEpics()) > 0 {
+		return
+	}
+
+	query := c.epicQuery
+	projectKey := c.projectKey
+	epicFreq := c.epicFreq
+	c.debounce = time.AfterFunc(150*time.Millisecond, func() {
+		epics, err := ctx.client.SearchEpics(projectKey, query)
+		ctx.app.QueueUpdateDraw(func() {
+			if ctx.state.createIssue != c {
+				return
+			}
+			if err != nil {
+				c.errMsg = err.Error()
+				return
+			}
+			sortEpicsByFreq(epics, epicFreq)
+			c.epics = epics
+			c.epicLoaded = true
+			if c.epicSel >= len(c.filteredEpics()) {
+				c.epicSel = 0
+			}
+		})
+	})
+}
+
+func executeCreateIssue(ctx *appContext) {
+	c := ctx.state.createIssue
+	if c.summary == "" {
+		c.errMsg = "Summary is required"
+		return
+	}
+	typeID := c.currentTypeID()
+	if typeID == "" {
+		c.errMsg = "Issue type not loaded yet"
+		return
+	}
+	c.creating = true
+	c.errMsg = ""
+	summary := c.summary
+	desc := c.desc
+	epicKey := c.epicKey
+	pk := c.projectKey
+
+	go func() {
+		result, err := ctx.client.CreateIssue(pk, typeID, summary, desc, epicKey)
+		ctx.app.QueueUpdateDraw(func() {
+			if ctx.state.createIssue != c {
+				return
+			}
+			if err != nil {
+				c.creating = false
+				c.errMsg = err.Error()
+				return
+			}
+			ctx.state.createIssue = nil
+			ctx.state.statusMsg = fmt.Sprintf(" Created %s", result.Key)
+			startSync(ctx)
 		})
 	}()
 }

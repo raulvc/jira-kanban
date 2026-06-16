@@ -29,8 +29,10 @@ type boardState struct {
 	filter         *filterState
 	detail         *detailState
 	assigneePicker *assigneePickerState
+	createIssue    *createIssueState
 	memberFilter   string
 	currentUser    string
+	projectKey     string
 }
 
 func newBoardState(data jira.Board) *boardState {
@@ -38,7 +40,19 @@ func newBoardState(data jira.Board) *boardState {
 		data:         data,
 		cardIdx:      make([]int, len(data.Columns)),
 		scrollOffset: make([]int, len(data.Columns)),
+		projectKey:   deriveProjectKey(data),
 	}
+}
+
+func deriveProjectKey(data jira.Board) string {
+	for _, col := range data.Columns {
+		for _, card := range col.Issues {
+			if idx := strings.LastIndex(card.Key, "-"); idx > 0 {
+				return card.Key[:idx]
+			}
+		}
+	}
+	return ""
 }
 
 func (s *boardState) selectedCard() *jira.Card {
@@ -272,6 +286,9 @@ func drawBoard(screen tcell.Screen, s *boardState, boardID, x, y, width, height 
 	if s.assigneePicker != nil {
 		drawAssigneePicker(screen, s.assigneePicker, width, height, s.currentUser)
 	}
+	if s.createIssue != nil {
+		drawCreateIssue(screen, s.createIssue, width, height, s.currentUser)
+	}
 }
 
 func drawStatusBar(screen tcell.Screen, s *boardState, boardID, x, y, width int) {
@@ -341,7 +358,7 @@ func drawHelpBar(screen tcell.Screen, x, y, width int) {
 	style := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
 	fillRow(screen, x, y, width, style)
 	drawText(screen, x, y,
-		" ←/→ cols • ↑/↓ cards • f filter • a assign • t transition • o browser • r refresh • q quit",
+		" ←/→ cols • ↑/↓ cards • f filter • a assign • c create • t transition • o browser • r refresh • q quit",
 		style, width)
 }
 
