@@ -377,6 +377,10 @@ func handleDetailInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 			openAssigneePicker(ctx)
 			return nil
 		}
+		if event.Rune() == 'c' && ctx.state.projectKey != "" {
+			openCreateSubtask(ctx, d.card.Key)
+			return nil
+		}
 	case tcell.KeyUp:
 		if d.scroll > 0 {
 			d.scroll--
@@ -600,6 +604,30 @@ func openCreateIssue(ctx *appContext) {
 	}()
 }
 
+func openCreateSubtask(ctx *appContext, parentKey string) {
+	c := newCreateIssueState(ctx.state.projectKey)
+	c.parentKey = parentKey
+	ctx.state.createIssue = c
+
+	go func() {
+		types, err := ctx.client.GetSubtaskTypes(c.projectKey)
+		ctx.app.QueueUpdateDraw(func() {
+			if ctx.state.createIssue != c {
+				return
+			}
+			if err != nil {
+				c.errMsg = err.Error()
+				return
+			}
+			if len(types) > 0 {
+				sortTypesByPriority(types)
+				c.types = types
+				c.typeIdx = 0
+			}
+		})
+	}()
+}
+
 func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 	c := ctx.state.createIssue
 	if c.creating {
@@ -611,11 +639,11 @@ func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.Event
 		ctx.state.createIssue = nil
 		return nil
 	case tcell.KeyTab:
-		c.field = (c.field + 1) % cfFieldCount
+		c.nextField()
 		c.clampCur()
 		return nil
 	case tcell.KeyBacktab:
-		c.field = (c.field - 1 + cfFieldCount) % cfFieldCount
+		c.prevField()
 		c.clampCur()
 		return nil
 	case tcell.KeyUp:
@@ -640,7 +668,7 @@ func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.Event
 				c.clampCur()
 			}
 		} else {
-			c.field = (c.field - 1 + cfFieldCount) % cfFieldCount
+			c.prevField()
 			c.clampCur()
 		}
 		return nil
@@ -650,7 +678,7 @@ func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.Event
 			if c.epicSel < len(items)-1 {
 				c.epicSel++
 			} else {
-				c.field = (c.field + 1) % cfFieldCount
+				c.nextField()
 				c.clampCur()
 			}
 		} else if c.field == cfDescription {
@@ -662,11 +690,11 @@ func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.Event
 			} else if c.descScroll < max(0, len(lines)-descVisH) {
 				c.descScroll++
 			} else {
-				c.field = cfEpic
+				c.nextField()
 				c.clampCur()
 			}
 		} else {
-			c.field = (c.field + 1) % cfFieldCount
+			c.nextField()
 			c.clampCur()
 		}
 		return nil
@@ -823,11 +851,16 @@ func executeCreateIssue(ctx *appContext) {
 	c.errMsg = ""
 	summary := c.summary
 	desc := c.desc
-	epicKey := c.epicKey
 	pk := c.projectKey
 
 	go func() {
-		result, err := ctx.client.CreateIssue(pk, typeID, summary, desc, epicKey)
+		var result jira.CreateIssueResult
+		var err error
+		if c.isSubtask() {
+			result, err = ctx.client.CreateSubtask(pk, typeID, summary, desc, c.parentKey)
+		} else {
+			result, err = ctx.client.CreateIssue(pk, typeID, summary, desc, c.epicKey)
+		}
 		ctx.app.QueueUpdateDraw(func() {
 			if ctx.state.createIssue != c {
 				return

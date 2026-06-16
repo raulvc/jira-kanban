@@ -24,6 +24,7 @@ const (
 // createIssueState tracks the create-issue form modal.
 type createIssueState struct {
 	projectKey string
+	parentKey  string
 	types      []jira.IssueType
 	typeIdx    int
 	summary    string
@@ -71,6 +72,23 @@ func newCreateIssueState(projectKey string) *createIssueState {
 		},
 		typeIdx: 0,
 	}
+}
+
+func (c *createIssueState) isSubtask() bool { return c.parentKey != "" }
+
+func (c *createIssueState) fieldCount() createField {
+	if c.isSubtask() {
+		return cfDescription + 1
+	}
+	return cfFieldCount
+}
+
+func (c *createIssueState) nextField() {
+	c.field = (c.field + 1) % c.fieldCount()
+}
+
+func (c *createIssueState) prevField() {
+	c.field = (c.field - 1 + c.fieldCount()) % c.fieldCount()
 }
 
 func (c *createIssueState) currentTypeName() string {
@@ -400,7 +418,7 @@ func drawCreateIssue(screen tcell.Screen, c *createIssueState, screenW, screenH 
 
 	epicListH := 0
 	epicSepRow := 0
-	if c.field == cfEpic && c.epicKey == "" {
+	if !c.isSubtask() && c.field == cfEpic && c.epicKey == "" {
 		epicListH = epicMaxVis
 		epicSepRow = 1
 	}
@@ -440,7 +458,11 @@ func drawCreateIssue(screen tcell.Screen, c *createIssueState, screenW, screenH 
 	drawBorder(screen, ox, oy, boxW, boxH, borderStyle)
 
 	cy := oy + 1
-	drawText(screen, ox+padding, cy, " Create Issue — "+c.projectKey+" ", titleStyle, contentW)
+	if c.isSubtask() {
+		drawText(screen, ox+padding, cy, " Create Subtask — "+c.parentKey+" ", titleStyle, contentW)
+	} else {
+		drawText(screen, ox+padding, cy, " Create Issue — "+c.projectKey+" ", titleStyle, contentW)
+	}
 	cy++
 	drawSep(screen, ox+padding, cy, contentW, sepStyle)
 	cy++
@@ -566,68 +588,70 @@ func drawCreateIssue(screen tcell.Screen, c *createIssueState, screenW, screenH 
 	cy++
 
 	// ── Epic ──────────────────────────────────────────────────────────────
-	lStyle = labelStyle
-	if c.field == cfEpic {
-		lStyle = activeLabelStyle
-	}
-	epicLabel := " Epic"
-	if c.epicKey != "" && c.field != cfEpic {
-		epicLabel = " Epic  ✓ " + c.epicKey + " — " + truncStr(c.epicName, contentW-12)
-	}
-	drawText(screen, ox+padding, cy, epicLabel, lStyle, contentW)
-	cy++
-
-	if c.field == cfEpic && c.epicKey == "" {
-		drawInputField(screen, ox+padding, cy, contentW, c.epicQuery, "Search epic…", true, c.epicCur, inputStyle, activeInputStyle, inputPlaceholder, activeBorder)
-		cy++
-		drawSep(screen, ox+padding, cy, contentW, sepStyle)
+	if !c.isSubtask() {
+		lStyle = labelStyle
+		if c.field == cfEpic {
+			lStyle = activeLabelStyle
+		}
+		epicLabel := " Epic"
+		if c.epicKey != "" && c.field != cfEpic {
+			epicLabel = " Epic  ✓ " + c.epicKey + " — " + truncStr(c.epicName, contentW-12)
+		}
+		drawText(screen, ox+padding, cy, epicLabel, lStyle, contentW)
 		cy++
 
-		items := c.filteredEpics()
-		epicBtnY := oy + boxH - 2
-		for i := range items {
-			style := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
-			prefix := "  "
-			if i == c.epicSel {
-				style = tcell.StyleDefault.Foreground(colFg).Background(colCardSel).Bold(true)
-				prefix = "▸ "
+		if c.field == cfEpic && c.epicKey == "" {
+			drawInputField(screen, ox+padding, cy, contentW, c.epicQuery, "Search epic…", true, c.epicCur, inputStyle, activeInputStyle, inputPlaceholder, activeBorder)
+			cy++
+			drawSep(screen, ox+padding, cy, contentW, sepStyle)
+			cy++
+
+			items := c.filteredEpics()
+			epicBtnY := oy + boxH - 2
+			for i := range items {
+				style := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
+				prefix := "  "
+				if i == c.epicSel {
+					style = tcell.StyleDefault.Foreground(colFg).Background(colCardSel).Bold(true)
+					prefix = "▸ "
+				}
+				text := items[i].Key + "  " + truncStr(items[i].Summary, contentW-10)
+				fillRow(screen, ox+1, cy, boxW-2, style)
+				drawText(screen, ox+padding, cy, prefix+text, style, contentW)
+				cy++
 			}
-			text := items[i].Key + "  " + truncStr(items[i].Summary, contentW-10)
-			fillRow(screen, ox+1, cy, boxW-2, style)
-			drawText(screen, ox+padding, cy, prefix+text, style, contentW)
+			for cy < epicBtnY {
+				fillRow(screen, ox+1, cy, boxW-2, bgStyle)
+				cy++
+			}
+			if len(items) == 0 && c.epicQuery != "" {
+				if !c.epicLoaded {
+					drawText(screen, ox+padding, epicBtnY-2, "  Loading epics…", tcell.StyleDefault.Foreground(colCyan).Background(colPanel), contentW)
+				} else {
+					drawText(screen, ox+padding, epicBtnY-2, "  No epics found", inputPlaceholder, contentW)
+				}
+			}
+		} else if c.epicKey != "" {
+			epicIcon, epicBg := typeStyle("Epic")
+			epicBadgeStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(epicBg).Bold(true)
+			badge := " " + epicIcon + " " + truncStr(c.epicKey+" "+c.epicName, contentW-4) + " "
+			screen.SetContent(ox+padding, cy, '│', nil, tcell.StyleDefault.Foreground(colMuted).Background(colBg))
+			fillRow(screen, ox+padding+1, cy, contentW-2, tcell.StyleDefault.Foreground(colFg).Background(colBg))
+			if c.field == cfEpic {
+				screen.SetContent(ox+padding, cy, '│', nil, activeBorder)
+				fillRow(screen, ox+padding+1, cy, contentW-2, activeInputStyle)
+				screen.SetContent(ox+padding+contentW-1, cy, '│', nil, activeBorder)
+			}
+			drawText(screen, ox+padding+1, cy, badge, epicBadgeStyle, contentW-2)
+			if c.field == cfEpic {
+				drawText(screen, ox+padding+1+len([]rune(badge))+1, cy, "Ctrl+U clear", tcell.StyleDefault.Foreground(colMuted).Background(colCardSel), contentW-2)
+			}
+			cy++
+		} else {
+			fillRow(screen, ox+padding, cy, contentW, tcell.StyleDefault.Foreground(colMuted).Background(colBg))
+			drawText(screen, ox+padding, cy, "  None", inputPlaceholder, contentW)
 			cy++
 		}
-		for cy < epicBtnY {
-			fillRow(screen, ox+1, cy, boxW-2, bgStyle)
-			cy++
-		}
-		if len(items) == 0 && c.epicQuery != "" {
-			if !c.epicLoaded {
-				drawText(screen, ox+padding, epicBtnY-2, "  Loading epics…", tcell.StyleDefault.Foreground(colCyan).Background(colPanel), contentW)
-			} else {
-				drawText(screen, ox+padding, epicBtnY-2, "  No epics found", inputPlaceholder, contentW)
-			}
-		}
-	} else if c.epicKey != "" {
-		epicIcon, epicBg := typeStyle("Epic")
-		epicBadgeStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(epicBg).Bold(true)
-		badge := " " + epicIcon + " " + truncStr(c.epicKey+" "+c.epicName, contentW-4) + " "
-		screen.SetContent(ox+padding, cy, '│', nil, tcell.StyleDefault.Foreground(colMuted).Background(colBg))
-		fillRow(screen, ox+padding+1, cy, contentW-2, tcell.StyleDefault.Foreground(colFg).Background(colBg))
-		if c.field == cfEpic {
-			screen.SetContent(ox+padding, cy, '│', nil, activeBorder)
-			fillRow(screen, ox+padding+1, cy, contentW-2, activeInputStyle)
-			screen.SetContent(ox+padding+contentW-1, cy, '│', nil, activeBorder)
-		}
-		drawText(screen, ox+padding+1, cy, badge, epicBadgeStyle, contentW-2)
-		if c.field == cfEpic {
-			drawText(screen, ox+padding+1+len([]rune(badge))+1, cy, "Ctrl+U clear", tcell.StyleDefault.Foreground(colMuted).Background(colCardSel), contentW-2)
-		}
-		cy++
-	} else {
-		fillRow(screen, ox+padding, cy, contentW, tcell.StyleDefault.Foreground(colMuted).Background(colBg))
-		drawText(screen, ox+padding, cy, "  None", inputPlaceholder, contentW)
-		cy++
 	}
 
 	// Error

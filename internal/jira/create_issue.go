@@ -69,6 +69,44 @@ func (c *Client) SearchEpics(projectKey, query string) ([]EpicItem, error) {
 	return out, nil
 }
 
+// GetSubtaskTypes returns the available subtask issue types for the given project.
+func (c *Client) GetSubtaskTypes(projectKey string) ([]IssueType, error) {
+	u := fmt.Sprintf("%s/rest/api/3/project/%s", c.BaseURL, projectKey)
+	var resp struct {
+		IssueTypes []IssueType `json:"issueTypes"`
+	}
+	if err := c.getJSON(u, &resp); err != nil {
+		return nil, fmt.Errorf("get subtask types for project %s: %w", projectKey, err)
+	}
+	var out []IssueType
+	for _, it := range resp.IssueTypes {
+		if it.Subtask {
+			out = append(out, it)
+		}
+	}
+	return out, nil
+}
+
+// CreateSubtask creates a new subtask under a parent issue and returns its key.
+func (c *Client) CreateSubtask(projectKey, issueTypeID, summary, description, parentKey string) (CreateIssueResult, error) {
+	u := fmt.Sprintf("%s/rest/api/3/issue", c.BaseURL)
+	fields := map[string]any{
+		"project":   map[string]string{"key": projectKey},
+		"issuetype": map[string]string{"id": issueTypeID},
+		"summary":   summary,
+		"parent":    map[string]string{"key": parentKey},
+	}
+	if description != "" {
+		fields["description"] = descToADF(description)
+	}
+	body := map[string]any{"fields": fields}
+	var result CreateIssueResult
+	if err := c.postJSONResponse(u, body, &result); err != nil {
+		return CreateIssueResult{}, fmt.Errorf("create subtask: %w", err)
+	}
+	return result, nil
+}
+
 // CreateIssue creates a new Jira issue and returns its key.
 func (c *Client) CreateIssue(projectKey, issueTypeID, summary, description, epicKey string) (CreateIssueResult, error) {
 	u := fmt.Sprintf("%s/rest/api/3/issue", c.BaseURL)
