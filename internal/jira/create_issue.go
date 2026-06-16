@@ -1,6 +1,10 @@
 package jira
 
-import "fmt"
+import (
+	"fmt"
+	"regexp"
+	"strings"
+)
 
 // IssueType represents a Jira issue type (Task, Bug, Epic, etc.).
 type IssueType struct {
@@ -74,18 +78,7 @@ func (c *Client) CreateIssue(projectKey, issueTypeID, summary, description, epic
 		"summary":   summary,
 	}
 	if description != "" {
-		fields["description"] = map[string]any{
-			"type":    "doc",
-			"version": 1,
-			"content": []map[string]any{
-				{
-					"type": "paragraph",
-					"content": []map[string]any{
-						{"type": "text", "text": description},
-					},
-				},
-			},
-		}
+		fields["description"] = descToADF(description)
 	}
 	if epicKey != "" {
 		fields["epic"] = map[string]string{"key": epicKey}
@@ -96,4 +89,142 @@ func (c *Client) CreateIssue(projectKey, issueTypeID, summary, description, epic
 		return CreateIssueResult{}, fmt.Errorf("create issue: %w", err)
 	}
 	return result, nil
+}
+
+// urlRe matches http(s) URLs in text.
+var urlRe = regexp.MustCompile(`https?://[^\s)\]>}]+`)
+
+// descToADF converts a plain-text description into an ADF document,
+// detecting triple-backtick code blocks and URLs.
+func descToADF(desc string) map[string]any {
+	var content []map[string]any
+
+	lines := strings.Split(desc, "\n")
+	i := 0
+	for i < len(lines) {
+		// Check for code block fence
+		if strings.HasPrefix(lines[i], "```") {
+			lang := strings.TrimPrefix(lines[i], "```")
+			var codeLines []string
+			i++
+			for i < len(lines) && lines[i] != "```" {
+				codeLines = append(codeLines, lines[i])
+				i++
+			}
+			i++ // skip closing ```
+			content = append(content, codeBlockNode(strings.Join(codeLines, "\n"), lang))
+			continue
+		}
+		// Accumulate non-code lines into paragraphs
+		var paraLines []string
+		for i < len(lines) && !strings.HasPrefix(lines[i], "```") {
+			paraLines = append(paraLines, lines[i])
+			i++
+		}
+		if len(paraLines) > 0 {
+			// Split at blank lines into separate paragraphs
+			for _, para := range splitParagraphs(paraLines) {
+				if para == "" {
+					content = append(content, map[string]any{
+						"type":    "paragraph",
+						"content": []map[string]any{},
+					})
+				} else {
+					content = append(content, paragraphWithLinks(para))
+				}
+			}
+		}
+	}
+
+	if len(content) == 0 {
+		content = append(content, map[string]any{
+			"type":    "paragraph",
+			"content": []map[string]any{},
+		})
+	}
+
+	return map[string]any{
+		"type":    "doc",
+		"version": 1,
+		"content": content,
+	}
+}
+
+// splitParagraphs groups consecutive non-blank lines, splitting at blank lines.
+func splitParagraphs(lines []string) []string {
+	var result []string
+	var buf strings.Builder
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			if buf.Len() > 0 {
+				result = append(result, buf.String())
+				buf.Reset()
+			}
+			result = append(result, "")
+		} else if buf.Len() > 0 {
+			buf.WriteByte('\n')
+			buf.WriteString(line)
+		} else {
+			buf.WriteString(line)
+		}
+	}
+	if buf.Len() > 0 {
+		result = append(result, buf.String())
+	}
+	return result
+}
+
+// paragraphWithLinks builds a paragraph ADF node, splitting text at URL
+// boundaries and adding link marks.
+func paragraphWithLinks(text string) map[string]any {
+	var inline []map[string]any
+	last := 0
+	for _, m := range urlRe.FindAllStringIndex(text, -1) {
+		if m[0] > last {
+			inline = append(inline, textNode(text[last:m[0]]))
+		}
+		inline = append(inline, linkTextNode(text[m[0]:m[1]]))
+		last = m[1]
+	}
+	if last < len(text) {
+		inline = append(inline, textNode(text[last:]))
+	}
+	if len(inline) == 0 {
+		inline = append(inline, textNode(text))
+	}
+	return map[string]any{
+		"type":    "paragraph",
+		"content": inline,
+	}
+}
+
+func textNode(text string) map[string]any {
+	return map[string]any{"type": "text", "text": text}
+}
+
+func linkTextNode(url string) map[string]any {
+	return map[string]any{
+		"type": "text",
+		"text": url,
+		"marks": []map[string]any{
+			{
+				"type":  "link",
+				"attrs": map[string]string{"href": url},
+			},
+		},
+	}
+}
+
+func codeBlockNode(code, lang string) map[string]any {
+	attrs := map[string]string{}
+	if lang != "" {
+		attrs["language"] = lang
+	}
+	return map[string]any{
+		"type": "codeBlock",
+		"attrs": attrs,
+		"content": []map[string]any{
+			textNode(code),
+		},
+	}
 }

@@ -113,8 +113,25 @@ type Card struct {
 	Assignee    string
 	Labels      []string
 	Description string
+	RichDesc    []DescSeg
 	Epic        string
 	Rank        string
+}
+
+// DescStyle identifies the visual style of a description segment.
+type DescStyle int
+
+const (
+	DsText     DescStyle = iota // normal text
+	DsLink                       // hyperlink (cyan)
+	DsCode                       // code block (dim/indented)
+	DsHeading                     // heading (bold)
+)
+
+// DescSeg is a styled segment of a description.
+type DescSeg struct {
+	Text  string
+	Style DescStyle
 }
 
 // Column groups cards under a named board column.
@@ -145,14 +162,16 @@ type adfNode struct {
 	Attrs   adfAttrs  `json:"attrs"`
 }
 
-// adfMark represents text marks (bold, italic, etc).
+// adfMark represents text marks (bold, italic, link, etc).
 type adfMark struct {
-	Type string `json:"type"`
+	Type  string            `json:"type"`
+	Attrs map[string]string `json:"attrs,omitempty"`
 }
 
-// adfAttrs holds node attributes (e.g. level for headings).
+// adfAttrs holds node attributes (e.g. level for headings, language for codeBlock).
 type adfAttrs struct {
-	Level int `json:"level"`
+	Level    int    `json:"level,omitempty"`
+	Language string `json:"language,omitempty"`
 }
 
 // adfToPlain extracts plain text from an ADF document, adding newlines
@@ -193,15 +212,39 @@ func renderADFNode(b *strings.Builder, node adfNode) {
 			renderADFNode(b, child)
 		}
 	case "heading":
+		prefix := strings.Repeat("#", node.Attrs.Level) + " "
+		b.WriteString(prefix)
 		for _, child := range node.Content {
 			renderADFNode(b, child)
 		}
 		b.WriteByte('\n')
 	case "text", "inlineCard":
 		b.WriteString(node.Text)
+		for _, m := range node.Marks {
+			if m.Type == "link" {
+				if href := m.Attrs["href"]; href != "" && href != node.Text {
+					b.WriteString(" (")
+					b.WriteString(href)
+					b.WriteByte(')')
+				}
+			}
+		}
 	case "hardBreak":
 		b.WriteByte('\n')
-	case "codeBlock", "blockCard", "mediaGroup", "media", "rule":
+	case "codeBlock":
+		lang := node.Attrs.Language
+		if lang != "" {
+			b.WriteString("```")
+			b.WriteString(lang)
+			b.WriteByte('\n')
+		} else {
+			b.WriteString("```\n")
+		}
+		for _, child := range node.Content {
+			renderADFNode(b, child)
+		}
+		b.WriteString("\n```")
+	case "blockCard", "mediaGroup", "media", "rule":
 		for _, child := range node.Content {
 			renderADFNode(b, child)
 			b.WriteByte('\n')
@@ -228,6 +271,98 @@ func parseDescription(raw json.RawMessage) string {
 		return s
 	}
 	return ""
+}
+
+// ParseRichDesc converts raw ADF JSON into styled description segments.
+func ParseRichDesc(raw json.RawMessage) []DescSeg {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var doc adfDoc
+	if err := json.Unmarshal(raw, &doc); err != nil || doc.Type != "doc" {
+		var s string
+		if err := json.Unmarshal(raw, &s); err == nil && s != "" {
+			return []DescSeg{{Text: s, Style: DsText}}
+		}
+		return nil
+	}
+	var segs []DescSeg
+	for i, node := range doc.Content {
+		if i > 0 {
+			segs = append(segs, DescSeg{Text: "\n"})
+		}
+		segs = appendRichNode(segs, node)
+	}
+	return segs
+}
+
+func appendRichNode(segs []DescSeg, node adfNode) []DescSeg {
+	switch node.Type {
+	case "paragraph":
+		for _, child := range node.Content {
+			segs = appendRichNode(segs, child)
+		}
+	case "heading":
+		prefix := strings.Repeat("#", node.Attrs.Level) + " "
+		segs = append(segs, DescSeg{Text: prefix, Style: DsHeading})
+		for _, child := range node.Content {
+			segs = append(segs, DescSeg{Text: child.Text, Style: DsHeading})
+		}
+		segs = append(segs, DescSeg{Text: "\n"})
+	case "bulletList", "orderedList":
+		for i, child := range node.Content {
+			if i > 0 {
+				segs = append(segs, DescSeg{Text: "\n"})
+			}
+			segs = appendRichNode(segs, child)
+		}
+	case "listItem":
+		segs = append(segs, DescSeg{Text: "• "})
+		for i, child := range node.Content {
+			if i > 0 {
+				segs = append(segs, DescSeg{Text: "\n"})
+			}
+			segs = appendRichNode(segs, child)
+		}
+	case "text", "inlineCard":
+		style := DsText
+		for _, m := range node.Marks {
+			if m.Type == "link" {
+				style = DsLink
+			}
+		}
+		segs = append(segs, DescSeg{Text: node.Text, Style: style})
+		for _, m := range node.Marks {
+			if m.Type == "link" {
+				if href := m.Attrs["href"]; href != "" && href != node.Text {
+					segs = append(segs, DescSeg{Text: " (" + href + ")", Style: DsLink})
+				}
+			}
+		}
+	case "hardBreak":
+		segs = append(segs, DescSeg{Text: "\n"})
+	case "codeBlock":
+		lang := node.Attrs.Language
+		prefix := "```\n"
+		if lang != "" {
+			prefix = "```" + lang + "\n"
+		}
+		segs = append(segs, DescSeg{Text: prefix, Style: DsCode})
+		for _, child := range node.Content {
+			segs = append(segs, DescSeg{Text: child.Text, Style: DsCode})
+		}
+		segs = append(segs, DescSeg{Text: "\n```", Style: DsCode})
+	case "blockCard", "mediaGroup", "media", "rule":
+		for _, child := range node.Content {
+			segs = appendRichNode(segs, child)
+			segs = append(segs, DescSeg{Text: "\n"})
+		}
+	default:
+		for _, child := range node.Content {
+			segs = appendRichNode(segs, child)
+		}
+	}
+	return segs
 }
 
 // VisibleKeys returns the set of issue keys present on the board.

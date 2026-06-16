@@ -36,7 +36,11 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 	contentH++ // blank separator
 	descLines := 1
 	if d.card.Description != "" {
-		descLines = wrappedLineCount(d.card.Description, contentW-2)
+		segs := d.card.RichDesc
+		if segs == nil {
+			segs = []jira.DescSeg{{Text: d.card.Description, Style: jira.DsText}}
+		}
+		descLines = richDescLineCount(segs, contentW-2)
 	}
 	if d.loading {
 		descLines = 1
@@ -164,17 +168,21 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 		d.maxScroll = 0
 	} else if d.card.Description != "" {
 		descW := contentW - 2
-		totalDescLines := wrappedLineCount(d.card.Description, descW)
+		segs := d.card.RichDesc
+		if segs == nil {
+			segs = []jira.DescSeg{{Text: d.card.Description, Style: jira.DsText}}
+		}
+		totalDescLines := richDescLineCount(segs, descW)
 		needsScrollbar := totalDescLines > descAreaH
 		if needsScrollbar {
 			descW--
 		}
-		totalDescLines = wrappedLineCount(d.card.Description, descW)
+		totalDescLines = richDescLineCount(segs, descW)
 		d.maxScroll = max(0, totalDescLines-descAreaH)
 		if d.scroll > d.maxScroll {
 			d.scroll = d.maxScroll
 		}
-		drawWrappedText(screen, d.card.Description, ox+padding, descAreaTop, descW, descAreaBot, d.scroll, descStyle)
+		drawRichWrappedText(screen, segs, ox+padding, descAreaTop, descW, descAreaBot, d.scroll, descStyle)
 		if needsScrollbar {
 			trackStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
 			thumbStyle := tcell.StyleDefault.Foreground(colBlue).Background(colPanel)
@@ -272,5 +280,155 @@ func statusColor(status string) tcell.Style {
 		return tcell.StyleDefault.Foreground(colYellow).Background(colPanel).Bold(true)
 	default:
 		return tcell.StyleDefault.Foreground(colFg).Background(colPanel).Bold(true)
+	}
+}
+
+// styledLine is one display line with styled chunks.
+type styledLine struct {
+	chunks []styledChunk
+}
+
+type styledChunk struct {
+	text  string
+	style jira.DescStyle
+}
+
+// richDescLineCount counts display lines for styled segments at a given width.
+func richDescLineCount(segs []jira.DescSeg, width int) int {
+	return len(richDescWrapLines(segs, width))
+}
+
+// richDescWrapLines wraps styled segments into display lines at a given width.
+func richDescWrapLines(segs []jira.DescSeg, width int) []styledLine {
+	if width <= 0 {
+		width = 1
+	}
+	// First, split segments at \n boundaries, building a flat list of "logical lines"
+	// where each logical line is a slice of styled chunks.
+	var logicalLines [][]styledChunk
+	var curLine []styledChunk
+
+	for _, seg := range segs {
+		parts := splitAtNewlines(seg.Text)
+		for pi, part := range parts {
+			if pi > 0 {
+				logicalLines = append(logicalLines, curLine)
+				curLine = nil
+			}
+			if part != "" {
+				curLine = append(curLine, styledChunk{text: part, style: seg.Style})
+			}
+		}
+	}
+	if len(curLine) > 0 || len(logicalLines) == 0 {
+		logicalLines = append(logicalLines, curLine)
+	}
+
+	// Then hard-wrap each logical line at width.
+	var result []styledLine
+	for _, ll := range logicalLines {
+		if len(ll) == 0 {
+			result = append(result, styledLine{})
+			continue
+		}
+		// Concatenate all text to measure total width, then split.
+		wrapped := wrapStyledLine(ll, width)
+		result = append(result, wrapped...)
+	}
+	return result
+}
+
+// splitAtNewlines splits s at \n, keeping empty strings between them.
+func splitAtNewlines(s string) []string {
+	var result []string
+	start := 0
+	for i, r := range s {
+		if r == '\n' {
+			result = append(result, s[start:i])
+			start = i + 1
+		}
+	}
+	result = append(result, s[start:])
+	return result
+}
+
+// wrapStyledLine hard-wraps a single logical line (sequence of styled chunks)
+// at the given width, producing multiple styledLines.
+func wrapStyledLine(chunks []styledChunk, width int) []styledLine {
+	// Flatten into rune-position → (rune, style) for precise wrapping.
+	type rEntry struct {
+		r     rune
+		style jira.DescStyle
+	}
+	var runes []rEntry
+	for _, c := range chunks {
+		for _, r := range c.text {
+			runes = append(runes, rEntry{r, c.style})
+		}
+	}
+	if len(runes) == 0 {
+		return []styledLine{{}}
+	}
+
+	var lines []styledLine
+	pos := 0
+	for pos < len(runes) {
+		end := min(pos+width, len(runes))
+		var sl styledLine
+		var cur styledChunk
+		for i := pos; i < end; i++ {
+			if len(cur.text) > 0 && cur.style != runes[i].style {
+				sl.chunks = append(sl.chunks, cur)
+				cur = styledChunk{style: runes[i].style}
+			}
+			cur.text += string(runes[i].r)
+			cur.style = runes[i].style
+		}
+		if len(cur.text) > 0 {
+			sl.chunks = append(sl.chunks, cur)
+		}
+		lines = append(lines, sl)
+		pos = end
+	}
+	return lines
+}
+
+// descSegStyle maps a DescStyle to a tcell.Style.
+func descSegStyle(ds jira.DescStyle, base tcell.Style) tcell.Style {
+	switch ds {
+	case jira.DsLink:
+		return tcell.StyleDefault.Foreground(colCyan).Background(colPanel).Underline(true)
+	case jira.DsCode:
+		return tcell.StyleDefault.Foreground(colMuted).Background(colBg).Dim(true)
+	case jira.DsHeading:
+		return base.Bold(true)
+	default:
+		return base
+	}
+}
+
+// drawRichWrappedText renders styled description segments with wrapping and scrolling.
+func drawRichWrappedText(screen tcell.Screen, segs []jira.DescSeg, x, y, width, clipBot, scroll int, baseStyle tcell.Style) {
+	lines := richDescWrapLines(segs, width)
+	if scroll >= len(lines) {
+		return
+	}
+	cy := y
+	for i := scroll; i < len(lines); i++ {
+		if cy >= clipBot {
+			break
+		}
+		col := 0
+		for _, chunk := range lines[i].chunks {
+			st := descSegStyle(chunk.style, baseStyle)
+			for _, r := range chunk.text {
+				if col >= width {
+					break
+				}
+				screen.SetContent(x+col, cy, r, nil, st)
+				col++
+			}
+		}
+		cy++
 	}
 }
