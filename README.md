@@ -57,6 +57,7 @@ jira-kanban --board 17   # flag form
 | `←` / `→` | Move between columns |
 | `↑` / `↓` | Move between cards |
 | `f` | Filter by assignee |
+| `e` | Filter by epic |
 | `enter` | View issue details |
 | `t` | Transition issue (with search filter) |
 | `o` | Open issue in browser |
@@ -73,6 +74,7 @@ jira-kanban --board 17   # flag form
 - **Optimistic transitions** — moving a card updates the UI immediately, then persists to Jira in the background.
 - **Assignee management** — assign or unassign issues directly from the board or detail view. The current user is highlighted with a ★ marker.
 - **Create issues & subtasks** — create new issues from the board view, and subtasks from the detail modal. Rich text descriptions with URL linking and code blocks are supported.
+- **Subtask navigation** — view and select subtasks inside the detail modal; press Enter to open a nested detail view for any subtask.
 
 Cache is stored at `$XDG_CACHE_HOME/jira-kanban/<board-id>.json`.
 
