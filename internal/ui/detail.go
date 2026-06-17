@@ -34,6 +34,12 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 	if len(d.card.Labels) > 0 {
 		contentH++ // labels
 	}
+	hasSubtasks := len(d.card.Subtasks) > 0
+	if hasSubtasks {
+		contentH++ // "Subtasks" header
+		contentH++ // blank after header
+		contentH += len(d.card.Subtasks)
+	}
 	contentH++ // blank separator
 	descLines := 1
 	if d.card.Description != "" {
@@ -151,6 +157,55 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 			}
 		}
 		cy++
+	}
+
+	// Subtasks
+	if hasSubtasks {
+		drawText(screen, ox+padding, cy, "Subtasks", titleStyle, maxCW)
+		cy++
+		cy++ // blank after header
+
+		subtaskKeyStyle := tcell.StyleDefault.Foreground(colBlue).Background(colPanel)
+		for _, st := range d.card.Subtasks {
+			sx := ox + padding
+
+			icon := "○"
+			iconColor := colMuted
+			switch st.Status {
+			case "Done":
+				icon = "✓"
+				iconColor = colGreen
+			case "In Progress":
+				icon = "●"
+				iconColor = colYellow
+			case "In Review":
+				icon = "◆"
+				iconColor = colCyan
+			}
+			iconStyle := tcell.StyleDefault.Foreground(iconColor).Background(colPanel)
+			drawText(screen, sx, cy, icon, iconStyle, 1)
+
+			sx += 2
+			drawText(screen, sx, cy, st.Key, subtaskKeyStyle, maxCW-2)
+
+			sx += len([]rune(st.Key)) + 1
+			avail := maxCW - (sx - ox - padding)
+			if avail > 0 {
+				drawText(screen, sx, cy, truncStr(st.Summary, avail), valueStyle, avail)
+			}
+
+			if st.Assignee != "" {
+				aText := st.Assignee
+				aLen := len([]rune(aText))
+				aStyle := tcell.StyleDefault.Foreground(assigneeColor(st.Assignee)).Background(colPanel)
+				aStartX := ox + padding + maxCW - aLen
+				if aStartX > sx {
+					drawText(screen, aStartX, cy, aText, aStyle, aLen)
+				}
+			}
+
+			cy++
+		}
 	}
 
 	// Blank separator

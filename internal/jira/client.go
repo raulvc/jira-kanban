@@ -115,6 +115,7 @@ func (c *Client) GetIssue(key string) (Card, error) {
 		Description: parseDescription(resp.Fields.Description),
 		RichDesc:   ParseRichDesc(resp.Fields.Description),
 		Epic:        epicName(resp),
+		Subtasks:    parseSubtasks(resp),
 	}, nil
 }
 

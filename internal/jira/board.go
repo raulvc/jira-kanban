@@ -687,6 +687,25 @@ func epicName(iss issue) string {
 	return ""
 }
 
+func parseSubtasks(iss issue) []Subtask {
+	if len(iss.Fields.Subtasks) == 0 {
+		return nil
+	}
+	out := make([]Subtask, 0, len(iss.Fields.Subtasks))
+	for _, st := range iss.Fields.Subtasks {
+		s := Subtask{
+			Key:     st.Key,
+			Summary: st.Fields.Summary,
+			Status:  st.Fields.Status.Name,
+		}
+		if st.Fields.Assignee != nil && st.Fields.Assignee.DisplayName != "" {
+			s.Assignee = st.Fields.Assignee.DisplayName
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
 // issueNum extracts the numeric suffix from a key like "PROJ-1234".
 func issueNum(key string) int {
 	if i := strings.LastIndex(key, "-"); i >= 0 {

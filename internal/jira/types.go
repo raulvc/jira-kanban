@@ -53,6 +53,7 @@ type issue struct {
 		Description json.RawMessage `json:"description"`
 		Parent      *issueParent    `json:"parent"`
 		Epic        *issueEpic      `json:"epic"`
+		Subtasks    []issueSubtask  `json:"subtasks"`
 	} `json:"fields"`
 	Rank string `json:"-"`
 }
@@ -90,11 +91,32 @@ func extractRanks(issues []issue, raw []byte, rankFieldID int) {
 	}
 }
 
+type Subtask struct {
+	Key      string
+	Summary  string
+	Status   string
+	Assignee string
+}
+
 // issueParent is the parent link returned for sub-tasks.
 type issueParent struct {
 	Key    string `json:"key"`
 	Fields struct {
 		Summary string `json:"summary"`
+	} `json:"fields"`
+}
+
+// issueSubtask is a single sub-task entry inside fields.subtasks.
+type issueSubtask struct {
+	Key    string `json:"key"`
+	Fields struct {
+		Summary string `json:"summary"`
+		Status  struct {
+			Name string `json:"name"`
+		} `json:"status"`
+		Assignee *struct {
+			DisplayName string `json:"displayName"`
+		} `json:"assignee"`
 	} `json:"fields"`
 }
 
@@ -116,6 +138,7 @@ type Card struct {
 	RichDesc    []DescSeg
 	Epic        string
 	Rank        string
+	Subtasks    []Subtask
 }
 
 // DescStyle identifies the visual style of a description segment.
