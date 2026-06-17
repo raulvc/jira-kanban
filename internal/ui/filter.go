@@ -190,3 +190,155 @@ func drawFilterModal(screen tcell.Screen, f *filterState, screenW, screenH int, 
 	btnX += len([]rune(allText)) + gap
 	drawText(screen, btnX, btnY, clearText, cancelStyle, contentW)
 }
+
+// ── epic filter ──────────────────────────────────────────────────────────────
+
+type epicFilterState struct {
+	epics    []string
+	query    string
+	selected int
+}
+
+func newEpicFilterState(data jira.Board) *epicFilterState {
+	seen := make(map[string]bool)
+	for _, col := range data.Columns {
+		for _, card := range col.Issues {
+			if card.Epic != "" && !seen[card.Epic] {
+				seen[card.Epic] = true
+			}
+		}
+	}
+	epics := make([]string, 0, len(seen))
+	for e := range seen {
+		epics = append(epics, e)
+	}
+	sort.Strings(epics)
+	return &epicFilterState{epics: epics}
+}
+
+func (f *epicFilterState) filtered() []string {
+	if f.query == "" {
+		return f.epics
+	}
+	q := toLower(f.query)
+	var out []string
+	for _, e := range f.epics {
+		if containsLower(e, q) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func (f *epicFilterState) moveSelection(delta int) {
+	items := f.filtered()
+	if len(items) == 0 {
+		return
+	}
+	f.selected += delta
+	f.selected = max(0, min(f.selected, len(items)-1))
+}
+
+func (f *epicFilterState) typeRune(r rune) {
+	f.query += string(r)
+	f.selected = 0
+}
+
+func (f *epicFilterState) backspace() {
+	if len(f.query) > 0 {
+		runes := []rune(f.query)
+		f.query = string(runes[:len(runes)-1])
+		items := f.filtered()
+		if f.selected >= len(items) && len(items) > 0 {
+			f.selected = len(items) - 1
+		}
+	}
+}
+
+func drawEpicFilterModal(screen tcell.Screen, f *epicFilterState, screenW, screenH int) {
+	const padding = 2
+	contentW := 40
+	items := f.filtered()
+	contentH := 5 + len(items) + 1
+
+	boxW := contentW + padding*2
+	boxH := contentH + padding
+	if boxW > screenW-4 {
+		boxW = screenW - 4
+		contentW = boxW - padding*2
+	}
+	if boxH > screenH-4 {
+		boxH = screenH - 4
+	}
+
+	ox := (screenW - boxW) / 2
+	oy := (screenH - boxH) / 2
+
+	bgStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
+	borderStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
+	titleStyle := tcell.StyleDefault.Foreground(colBlue).Background(colPanel).Bold(true)
+	searchStyle := tcell.StyleDefault.Foreground(colFg).Background(colBg)
+	searchPlaceholder := tcell.StyleDefault.Foreground(colMuted).Background(colBg)
+	itemStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
+	selStyle := tcell.StyleDefault.Foreground(colFg).Background(colCardSel).Bold(true)
+
+	for row := oy; row < oy+boxH; row++ {
+		fillRow(screen, ox, row, boxW, bgStyle)
+	}
+	drawBorder(screen, ox, oy, boxW, boxH, borderStyle)
+
+	cy := oy + 1
+	drawText(screen, ox+padding, cy, " Filter by epic ", titleStyle, contentW)
+	cy++
+
+	fillRow(screen, ox+padding, cy, contentW, searchStyle)
+	if f.query == "" {
+		drawText(screen, ox+padding, cy, " Search…", searchPlaceholder, contentW)
+	} else {
+		drawText(screen, ox+padding, cy, " "+f.query+"▏", searchStyle, contentW)
+	}
+	cy++
+	cy++
+
+	maxVisible := max(boxH-6, 1)
+
+	scrollStart := 0
+	if f.selected >= scrollStart+maxVisible {
+		scrollStart = f.selected - maxVisible + 1
+	}
+	if f.selected < scrollStart {
+		scrollStart = f.selected
+	}
+
+	for i := scrollStart; i < len(items) && i < scrollStart+maxVisible; i++ {
+		style := itemStyle
+		prefix := "  "
+		if i == f.selected {
+			style = selStyle
+			prefix = "▸ "
+		}
+		fillRow(screen, ox+1, cy, boxW-2, style)
+		epBadge := " " + truncStr(items[i], contentW-5) + " "
+		epStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(epicColor(items[i])).Bold(true)
+		drawText(screen, ox+padding, cy, prefix, style, contentW)
+		drawText(screen, ox+padding+2, cy, epBadge, epStyle, contentW-2)
+		cy++
+	}
+
+	if len(items) == 0 {
+		drawText(screen, ox+padding, cy, "  No matches", searchPlaceholder, contentW)
+	}
+
+	btnY := oy + boxH - 2
+	fillRow(screen, ox+1, btnY, boxW-2, bgStyle)
+	allStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(colOrange).Bold(true)
+	cancelStyle := tcell.StyleDefault.Foreground(colFg).Background(colMuted)
+	allText := " All (Esc) "
+	clearText := " Clear "
+	gap := 2
+	totalBtnW := len([]rune(allText)) + gap + len([]rune(clearText))
+	btnX := ox + (boxW-totalBtnW)/2
+	drawText(screen, btnX, btnY, allText, allStyle, contentW)
+	btnX += len([]rune(allText)) + gap
+	drawText(screen, btnX, btnY, clearText, cancelStyle, contentW)
+}

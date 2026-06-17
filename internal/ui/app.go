@@ -53,6 +53,9 @@ func Run(client *jira.Client, boardID int, data jira.Board, baseURL string, need
 		if state.filter != nil {
 			return handleFilterInput(ctx, event)
 		}
+		if state.epicFilter != nil {
+			return handleEpicFilterInput(ctx, event)
+		}
 		if state.assigneePicker != nil {
 			return handleAssigneePickerInput(ctx, event)
 		}
@@ -129,6 +132,10 @@ func handleBoardInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 			ctx.state.memberFilter = ""
 			ctx.state.clampSelection()
 		}
+		if ctx.state.epicFilterVal != "" {
+			ctx.state.epicFilterVal = ""
+			ctx.state.clampSelection()
+		}
 		return nil
 	case tcell.KeyLeft:
 		ctx.state.moveColumn(-1)
@@ -178,6 +185,11 @@ func handleBoardRune(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 	case 'f':
 		if ctx.state.filter == nil {
 			ctx.state.filter = newFilterState(ctx.state.data)
+		}
+		return nil
+	case 'e':
+		if ctx.state.epicFilter == nil {
+			ctx.state.epicFilter = newEpicFilterState(ctx.state.data)
 		}
 		return nil
 	case 'a':
@@ -249,6 +261,46 @@ func handleFilterInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyCtrlU:
 		ctx.state.memberFilter = ""
 		ctx.state.filter = nil
+		ctx.state.clampSelection()
+		return nil
+	case tcell.KeyCtrlC:
+		ctx.app.Stop()
+		return nil
+	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		f.backspace()
+		return nil
+	case tcell.KeyRune:
+		f.typeRune(event.Rune())
+		return nil
+	}
+	return nil
+}
+
+func handleEpicFilterInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
+	f := ctx.state.epicFilter
+	switch event.Key() {
+	case tcell.KeyEscape:
+		ctx.state.epicFilterVal = ""
+		ctx.state.epicFilter = nil
+		ctx.state.clampSelection()
+		return nil
+	case tcell.KeyUp:
+		f.moveSelection(-1)
+		return nil
+	case tcell.KeyDown:
+		f.moveSelection(1)
+		return nil
+	case tcell.KeyEnter:
+		items := f.filtered()
+		if f.selected >= 0 && f.selected < len(items) {
+			ctx.state.epicFilterVal = items[f.selected]
+		}
+		ctx.state.epicFilter = nil
+		ctx.state.clampSelection()
+		return nil
+	case tcell.KeyCtrlU:
+		ctx.state.epicFilterVal = ""
+		ctx.state.epicFilter = nil
 		ctx.state.clampSelection()
 		return nil
 	case tcell.KeyCtrlC:

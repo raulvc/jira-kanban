@@ -27,10 +27,12 @@ type boardState struct {
 	spinnerFrame   int
 	modal          *modalState
 	filter         *filterState
+	epicFilter     *epicFilterState
 	detail         *detailState
 	assigneePicker *assigneePickerState
 	createIssue    *createIssueState
 	memberFilter   string
+	epicFilterVal  string
 	currentUser    string
 	projectKey     string
 }
@@ -200,16 +202,20 @@ func (s *boardState) reload(data jira.Board) {
 // filteredData returns a copy of the board data with only cards matching
 // the current memberFilter. If no filter is set, it returns the original data.
 func (s *boardState) filteredData() jira.Board {
-	if s.memberFilter == "" {
+	if s.memberFilter == "" && s.epicFilterVal == "" {
 		return s.data
 	}
 	result := jira.Board{Name: s.data.Name}
 	for _, col := range s.data.Columns {
 		fc := jira.Column{Name: col.Name}
 		for _, card := range col.Issues {
-			if card.Assignee == s.memberFilter {
-				fc.Issues = append(fc.Issues, card)
+			if s.memberFilter != "" && card.Assignee != s.memberFilter {
+				continue
 			}
+			if s.epicFilterVal != "" && card.Epic != s.epicFilterVal {
+				continue
+			}
+			fc.Issues = append(fc.Issues, card)
 		}
 		result.Columns = append(result.Columns, fc)
 	}
@@ -279,6 +285,9 @@ func drawBoard(screen tcell.Screen, s *boardState, boardID, x, y, width, height 
 	}
 	if s.filter != nil {
 		drawFilterModal(screen, s.filter, width, height, s.currentUser)
+	}
+	if s.epicFilter != nil {
+		drawEpicFilterModal(screen, s.epicFilter, width, height)
 	}
 	if s.detail != nil {
 		drawDetailModal(screen, s.detail, width, height)
@@ -350,6 +359,9 @@ func drawStatusBar(screen tcell.Screen, s *boardState, boardID, x, y, width int)
 		if s.memberFilter != "" {
 			text += fmt.Sprintf("  filter: %s", s.memberFilter)
 		}
+		if s.epicFilterVal != "" {
+			text += fmt.Sprintf("  epic: %s", s.epicFilterVal)
+		}
 	}
 	drawText(screen, x, y, text, style, width)
 }
@@ -358,7 +370,7 @@ func drawHelpBar(screen tcell.Screen, x, y, width int) {
 	style := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
 	fillRow(screen, x, y, width, style)
 	drawText(screen, x, y,
-		" ←/→ cols • ↑/↓ cards • f filter • a assign • c create • t transition • o browser • r refresh • q quit",
+		" ←/→ cols • ↑/↓ cards • f filter • e epic • a assign • c create • t transition • o browser • r refresh • q quit",
 		style, width)
 }
 
