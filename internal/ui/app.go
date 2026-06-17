@@ -364,6 +364,13 @@ func openIssueDetail(ctx *appContext) {
 
 func handleDetailInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 	d := ctx.state.detail
+
+	if d.subDetail != nil {
+		return handleSubDetailInput(ctx, d.subDetail, event)
+	}
+
+	hasSubtasks := len(d.card.Subtasks) > 0
+
 	switch event.Key() {
 	case tcell.KeyEscape:
 		ctx.state.detail = nil
@@ -379,6 +386,59 @@ func handleDetailInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		}
 		if event.Rune() == 'c' && ctx.state.projectKey != "" {
 			openCreateSubtask(ctx, d.card.Key)
+			return nil
+		}
+	case tcell.KeyUp:
+		if hasSubtasks && d.selectedSubtask > 0 {
+			d.selectedSubtask--
+			return nil
+		}
+		if d.scroll > 0 {
+			d.scroll--
+		}
+		return nil
+	case tcell.KeyDown:
+		if hasSubtasks && d.selectedSubtask < len(d.card.Subtasks)-1 {
+			d.selectedSubtask++
+			return nil
+		}
+		if d.scroll < d.maxScroll {
+			d.scroll++
+		}
+		return nil
+	case tcell.KeyEnter:
+		if hasSubtasks && d.selectedSubtask < len(d.card.Subtasks) {
+			st := d.card.Subtasks[d.selectedSubtask]
+			openSubDetail(ctx, d, st.Key)
+			return nil
+		}
+	case tcell.KeyPgUp:
+		d.scroll = max(0, d.scroll-max(1, d.viewH-1))
+		return nil
+	case tcell.KeyPgDn:
+		d.scroll = min(d.maxScroll, d.scroll+max(1, d.viewH-1))
+		return nil
+	case tcell.KeyHome:
+		d.scroll = 0
+		return nil
+	case tcell.KeyEnd:
+		d.scroll = d.maxScroll
+		return nil
+	case tcell.KeyCtrlC:
+		ctx.app.Stop()
+		return nil
+	}
+	return nil
+}
+
+func handleSubDetailInput(ctx *appContext, d *detailState, event *tcell.EventKey) *tcell.EventKey {
+	switch event.Key() {
+	case tcell.KeyEscape:
+		ctx.state.detail.subDetail = nil
+		return nil
+	case tcell.KeyRune:
+		if event.Rune() == 'q' {
+			ctx.state.detail.subDetail = nil
 			return nil
 		}
 	case tcell.KeyUp:
@@ -408,6 +468,30 @@ func handleDetailInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 	return nil
+}
+
+func openSubDetail(ctx *appContext, parent *detailState, key string) {
+	sub := &detailState{
+		card:        jira.Card{Key: key},
+		loading:     true,
+		isSubDetail: true,
+	}
+	parent.subDetail = sub
+	go func() {
+		full, err := ctx.client.GetIssue(key)
+		ctx.app.QueueUpdateDraw(func() {
+			if parent.subDetail != sub {
+				return
+			}
+			if err != nil {
+				sub.loading = false
+				sub.err = err.Error()
+				return
+			}
+			sub.card = full
+			sub.loading = false
+		})
+	}()
 }
 
 func openIssueBrowser(ctx *appContext) {

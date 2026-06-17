@@ -15,6 +15,11 @@ type detailState struct {
 	scroll    int
 	maxScroll int
 	viewH     int
+
+	subDetail        *detailState
+	selectedSubtask   int
+	subtaskScrollY    int // y-coordinate of first subtask row (for highlight)
+	isSubDetail       bool
 }
 
 // drawDetailModal renders a centered issue detail overlay over the board.
@@ -97,6 +102,9 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 	closeY := oy + boxH - 2
 	closeStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
 	closeText := " Esc/q close • a assign • c subtask "
+	if d.isSubDetail {
+		closeText = " Esc/q back "
+	}
 	drawText(screen, ox+(boxW-len([]rune(closeText)))/2, closeY, closeText, closeStyle, boxW)
 
 	// Content
@@ -165,9 +173,20 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 		cy++
 		cy++ // blank after header
 
-		subtaskKeyStyle := tcell.StyleDefault.Foreground(colBlue).Background(colPanel)
-		for _, st := range d.card.Subtasks {
+		d.subtaskScrollY = cy
+		for i, st := range d.card.Subtasks {
 			sx := ox + padding
+
+			rowBg := colPanel
+			if i == d.selectedSubtask {
+				rowBg = colCardSel
+			}
+			rowStyle := tcell.StyleDefault.Background(rowBg)
+
+			// Highlight row background
+			for dx := 0; dx < contentW; dx++ {
+				screen.SetContent(ox+padding+dx, cy, ' ', nil, rowStyle)
+			}
 
 			icon := "○"
 			iconColor := colMuted
@@ -182,25 +201,27 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 				icon = "◆"
 				iconColor = colCyan
 			}
-			iconStyle := tcell.StyleDefault.Foreground(iconColor).Background(colPanel)
+			iconStyle := tcell.StyleDefault.Foreground(iconColor).Background(rowBg)
 			drawText(screen, sx, cy, icon, iconStyle, 1)
 
 			sx += 2
-			drawText(screen, sx, cy, st.Key, subtaskKeyStyle, maxCW-2)
+			keyStyle := tcell.StyleDefault.Foreground(colBlue).Background(rowBg)
+			drawText(screen, sx, cy, st.Key, keyStyle, maxCW-2)
 
 			sx += len([]rune(st.Key)) + 1
 			avail := maxCW - (sx - ox - padding)
+			valStyle := tcell.StyleDefault.Foreground(colFg).Background(rowBg)
 			if avail > 0 {
-				drawText(screen, sx, cy, truncStr(st.Summary, avail), valueStyle, avail)
+				drawText(screen, sx, cy, truncStr(st.Summary, avail), valStyle, avail)
 			}
 
 			if st.Assignee != "" {
 				aText := st.Assignee
 				aLen := len([]rune(aText))
-				aStyle := tcell.StyleDefault.Foreground(assigneeColor(st.Assignee)).Background(colPanel)
+				aStyle := tcell.StyleDefault.Foreground(assigneeColor(st.Assignee)).Background(rowBg)
 				aStartX := ox + padding + maxCW - aLen
 				if aStartX > sx {
-					drawText(screen, aStartX, cy, aText, aStyle, aLen)
+				drawText(screen, aStartX, cy, aText, aStyle, aLen)
 				}
 			}
 
@@ -248,6 +269,10 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 	} else {
 		drawText(screen, ox+padding, cy, "No description", tcell.StyleDefault.Foreground(colMuted).Background(colPanel), maxCW)
 		d.maxScroll = 0
+	}
+
+	if d.subDetail != nil {
+		drawDetailModal(screen, d.subDetail, screenW, screenH)
 	}
 }
 
