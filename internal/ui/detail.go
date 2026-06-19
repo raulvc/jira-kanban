@@ -22,30 +22,99 @@ type detailState struct {
 	isSubDetail       bool
 }
 
+type detailLayout struct {
+	ox, oy, boxW, boxH int
+	contentW, padding   int
+	maxCW              int
+	bgStyle             tcell.Style
+	borderStyle         tcell.Style
+	titleStyle          tcell.Style
+	keyStyle            tcell.Style
+	valueStyle          tcell.Style
+	descStyle           tcell.Style
+	loadingStyle        tcell.Style
+	errStyle            tcell.Style
+}
+
 // drawDetailModal renders a centered issue detail overlay over the board.
 func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) {
 	const padding = 2
 	contentW := min(60, screenW-6)
+	contentH := detailContentHeight(d, contentW)
 
-	// Calculate content height
+	boxW := contentW + padding*2
+	boxH := contentH + padding + 2
+	if boxW > screenW-4 {
+		boxW = screenW - 4
+		contentW = boxW - padding*2
+	}
+	if boxH > screenH-4 {
+		boxH = screenH - 4
+	}
+
+	ox := (screenW - boxW) / 2
+	oy := (screenH - boxH) / 2
+	maxCW := contentW
+
+	l := detailLayout{
+		ox: ox, oy: oy, boxW: boxW, boxH: boxH,
+		contentW: contentW, padding: padding, maxCW: maxCW,
+		bgStyle:      tcell.StyleDefault.Foreground(colFg).Background(colPanel),
+		borderStyle:  tcell.StyleDefault.Foreground(colMuted).Background(colPanel),
+		titleStyle:   tcell.StyleDefault.Foreground(colBlue).Background(colPanel).Bold(true),
+		keyStyle:     tcell.StyleDefault.Foreground(colMuted).Background(colPanel),
+		valueStyle:   tcell.StyleDefault.Foreground(colFg).Background(colPanel),
+		descStyle:    tcell.StyleDefault.Foreground(colFg).Background(colPanel),
+		loadingStyle: tcell.StyleDefault.Foreground(colCyan).Background(colPanel),
+		errStyle:     tcell.StyleDefault.Foreground(colRed).Background(colPanel).Bold(true),
+	}
+
+	for row := oy; row < oy+boxH; row++ {
+		fillRow(screen, ox, row, boxW, l.bgStyle)
+	}
+
+	drawBorder(screen, ox, oy, boxW, boxH, l.borderStyle)
+
+	closeY := oy + boxH - 2
+	closeStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
+	closeText := " Esc/q close • a assign • c subtask "
+	if d.isSubDetail {
+		closeText = " Esc/q back "
+	}
+	drawText(screen, ox+(boxW-len([]rune(closeText)))/2, closeY, closeText, closeStyle, boxW)
+
+	cy := oy + 1
+	cy = drawDetailHeader(screen, d, &l, cy)
+
+	hasSubtasks := len(d.card.Subtasks) > 0
+	if hasSubtasks {
+		cy = drawDetailSubtasks(screen, d, &l, cy)
+	}
+
+	cy++
+	drawDetailDescription(screen, d, &l, cy)
+
+	if d.subDetail != nil {
+		drawDetailModal(screen, d.subDetail, screenW, screenH)
+	}
+}
+
+func detailContentHeight(d *detailState, contentW int) int {
 	contentH := 0
 	contentH++ // key + summary line
 	contentH++ // blank
 	contentH++ // status
 	contentH++ // assignee
 	if d.card.Epic != "" {
-		contentH++ // epic
+		contentH++
 	}
 	if len(d.card.Labels) > 0 {
-		contentH++ // labels
+		contentH++
 	}
-	hasSubtasks := len(d.card.Subtasks) > 0
-	if hasSubtasks {
-		contentH++ // "Subtasks" header
-		contentH++ // blank after header
-		contentH += len(d.card.Subtasks)
+	if len(d.card.Subtasks) > 0 {
+		contentH += 2 + len(d.card.Subtasks)
 	}
-	contentH++ // blank separator
+	contentH++
 	descLines := 1
 	if d.card.Description != "" {
 		segs := d.card.RichDesc
@@ -61,218 +130,164 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 		descLines = 1
 	}
 	contentH += descLines
+	return max(contentH, 6)
+}
 
-	// Minimum height
-	if contentH < 6 {
-		contentH = 6
-	}
-
-	boxW := contentW + padding*2
-	boxH := contentH + padding + 2 // +2 for top/bottom border area
-	if boxW > screenW-4 {
-		boxW = screenW - 4
-		contentW = boxW - padding*2
-	}
-	if boxH > screenH-4 {
-		boxH = screenH - 4
-	}
-
-	ox := (screenW - boxW) / 2
-	oy := (screenH - boxH) / 2
-
-	// Styles
-	bgStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
-	borderStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
-	titleStyle := tcell.StyleDefault.Foreground(colBlue).Background(colPanel).Bold(true)
-	keyStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
-	valueStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
-	descStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
-	loadingStyle := tcell.StyleDefault.Foreground(colCyan).Background(colPanel)
-	errStyle := tcell.StyleDefault.Foreground(colRed).Background(colPanel).Bold(true)
-
-	// Fill background
-	for row := oy; row < oy+boxH; row++ {
-		fillRow(screen, ox, row, boxW, bgStyle)
-	}
-
-	// Border
-	drawBorder(screen, ox, oy, boxW, boxH, borderStyle)
-
-	// Close hint at bottom
-	closeY := oy + boxH - 2
-	closeStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
-	closeText := " Esc/q close • a assign • c subtask "
-	if d.isSubDetail {
-		closeText = " Esc/q back "
-	}
-	drawText(screen, ox+(boxW-len([]rune(closeText)))/2, closeY, closeText, closeStyle, boxW)
-
-	// Content
-	cy := oy + 1
-	maxCW := contentW
-
-	// Title: Key   Summary
+func drawDetailHeader(screen tcell.Screen, d *detailState, l *detailLayout, cy int) int {
 	titleText := d.card.Key + "  "
-	drawText(screen, ox+padding, cy, titleText, titleStyle, maxCW)
-	remaining := maxCW - len([]rune(titleText))
+	drawText(screen, l.ox+l.padding, cy, titleText, l.titleStyle, l.maxCW)
+	remaining := l.maxCW - len([]rune(titleText))
 	if remaining > 0 {
-		drawText(screen, ox+padding+len([]rune(titleText)), cy, truncStr(d.card.Summary, remaining), valueStyle, remaining)
+		drawText(screen, l.ox+l.padding+len([]rune(titleText)), cy, truncStr(d.card.Summary, remaining), l.valueStyle, remaining)
 	}
 	cy++
-
-	// Blank
 	cy++
 
-	// Status
-	drawText(screen, ox+padding, cy, "Status: ", keyStyle, maxCW)
-	drawText(screen, ox+padding+8, cy, d.card.Status, statusColor(d.card.Status), maxCW-8)
+	drawText(screen, l.ox+l.padding, cy, "Status: ", l.keyStyle, l.maxCW)
+	drawText(screen, l.ox+l.padding+8, cy, d.card.Status, statusColor(d.card.Status), l.maxCW-8)
 	cy++
 
-	// Assignee
 	assigneeText := d.card.Assignee
 	if assigneeText == "" {
 		assigneeText = "Unassigned"
 	}
-	drawText(screen, ox+padding, cy, "Assignee: ", keyStyle, maxCW)
-	assigneeStyle := valueStyle
+	drawText(screen, l.ox+l.padding, cy, "Assignee: ", l.keyStyle, l.maxCW)
+	assigneeStyle := l.valueStyle
 	if d.card.Assignee != "" {
 		assigneeStyle = tcell.StyleDefault.Foreground(assigneeColor(d.card.Assignee)).Background(colPanel)
 	}
-	drawText(screen, ox+padding+10, cy, assigneeText, assigneeStyle, maxCW-10)
+	drawText(screen, l.ox+l.padding+10, cy, assigneeText, assigneeStyle, l.maxCW-10)
 	cy++
 
-	// Epic
 	if d.card.Epic != "" {
-		drawText(screen, ox+padding, cy, "Epic: ", keyStyle, maxCW)
-		epBadge := " " + truncStr(d.card.Epic, maxCW-8) + " "
+		drawText(screen, l.ox+l.padding, cy, "Epic: ", l.keyStyle, l.maxCW)
+		epBadge := " " + truncStr(d.card.Epic, l.maxCW-8) + " "
 		epStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(epicColor(d.card.Epic)).Bold(true)
-		drawText(screen, ox+padding+6, cy, epBadge, epStyle, maxCW-6)
+		drawText(screen, l.ox+l.padding+6, cy, epBadge, epStyle, l.maxCW-6)
 		cy++
 	}
 
-	// Labels
 	if len(d.card.Labels) > 0 {
-		drawText(screen, ox+padding, cy, "Labels: ", keyStyle, maxCW)
-		lx := ox + padding + 8
+		drawText(screen, l.ox+l.padding, cy, "Labels: ", l.keyStyle, l.maxCW)
+		lx := l.ox + l.padding + 8
 		for _, label := range d.card.Labels {
-			lc := labelColor(label)
-			ls := tcell.StyleDefault.Foreground(lc).Background(colPanel)
+			ls := tcell.StyleDefault.Foreground(labelColor(label)).Background(colPanel)
 			text := " " + label + " "
-			drawn := drawText(screen, lx, cy, text, ls, maxCW-(lx-ox-padding))
+			drawn := drawText(screen, lx, cy, text, ls, l.maxCW-(lx-l.ox-l.padding))
 			lx += drawn + 1
-			if lx-ox-padding >= maxCW {
+			if lx-l.ox-l.padding >= l.maxCW {
 				break
 			}
 		}
 		cy++
 	}
 
-	// Subtasks
-	if hasSubtasks {
-		drawText(screen, ox+padding, cy, "Subtasks", titleStyle, maxCW)
-		cy++
-		cy++ // blank after header
+	return cy
+}
 
-		d.subtaskScrollY = cy
-		for i, st := range d.card.Subtasks {
-			sx := ox + padding
+func drawDetailSubtasks(screen tcell.Screen, d *detailState, l *detailLayout, cy int) int {
+	drawText(screen, l.ox+l.padding, cy, "Subtasks", l.titleStyle, l.maxCW)
+	cy += 2
 
-			rowBg := colPanel
-			if i == d.selectedSubtask {
-				rowBg = colCardSel
-			}
-			rowStyle := tcell.StyleDefault.Background(rowBg)
+	d.subtaskScrollY = cy
+	for i, st := range d.card.Subtasks {
+		sx := l.ox + l.padding
 
-			// Highlight row background
-			for dx := 0; dx < contentW; dx++ {
-				screen.SetContent(ox+padding+dx, cy, ' ', nil, rowStyle)
-			}
-
-			icon := "○"
-			iconColor := colMuted
-			switch st.Status {
-			case "Done":
-				icon = "✓"
-				iconColor = colGreen
-			case "In Progress":
-				icon = "●"
-				iconColor = colYellow
-			case "In Review":
-				icon = "◆"
-				iconColor = colCyan
-			}
-			iconStyle := tcell.StyleDefault.Foreground(iconColor).Background(rowBg)
-			drawText(screen, sx, cy, icon, iconStyle, 1)
-
-			sx += 2
-			keyStyle := tcell.StyleDefault.Foreground(colBlue).Background(rowBg)
-			drawText(screen, sx, cy, st.Key, keyStyle, maxCW-2)
-
-			sx += len([]rune(st.Key)) + 1
-			avail := maxCW - (sx - ox - padding)
-			valStyle := tcell.StyleDefault.Foreground(colFg).Background(rowBg)
-			if avail > 0 {
-				drawText(screen, sx, cy, truncStr(st.Summary, avail), valStyle, avail)
-			}
-
-			if st.Assignee != "" {
-				aText := st.Assignee
-				aLen := len([]rune(aText))
-				aStyle := tcell.StyleDefault.Foreground(assigneeColor(st.Assignee)).Background(rowBg)
-				aStartX := ox + padding + maxCW - aLen
-				if aStartX > sx {
-				drawText(screen, aStartX, cy, aText, aStyle, aLen)
-				}
-			}
-
-			cy++
+		rowBg := colPanel
+		if i == d.selectedSubtask {
+			rowBg = colCardSel
 		}
+		rowStyle := tcell.StyleDefault.Background(rowBg)
+
+		for dx := 0; dx < l.contentW; dx++ {
+			screen.SetContent(l.ox+l.padding+dx, cy, ' ', nil, rowStyle)
+		}
+
+		icon, iconColor := subtaskIcon(st.Status)
+		iconStyle := tcell.StyleDefault.Foreground(iconColor).Background(rowBg)
+		drawText(screen, sx, cy, icon, iconStyle, 1)
+
+		sx += 2
+		keyStyle := tcell.StyleDefault.Foreground(colBlue).Background(rowBg)
+		drawText(screen, sx, cy, st.Key, keyStyle, l.maxCW-2)
+
+		sx += len([]rune(st.Key)) + 1
+		avail := l.maxCW - (sx - l.ox - l.padding)
+		valStyle := tcell.StyleDefault.Foreground(colFg).Background(rowBg)
+		if avail > 0 {
+			drawText(screen, sx, cy, truncStr(st.Summary, avail), valStyle, avail)
+		}
+
+		if st.Assignee != "" {
+			aText := st.Assignee
+			aLen := len([]rune(aText))
+			aStyle := tcell.StyleDefault.Foreground(assigneeColor(st.Assignee)).Background(rowBg)
+			aStartX := l.ox + l.padding + l.maxCW - aLen
+			if aStartX > sx {
+				drawText(screen, aStartX, cy, aText, aStyle, aLen)
+			}
+		}
+
+		cy++
 	}
+	return cy
+}
 
-	// Blank separator
-	cy++
+func subtaskIcon(status string) (string, tcell.Color) {
+	switch status {
+	case "Done":
+		return "✓", colGreen
+	case "In Progress":
+		return "●", colYellow
+	case "In Review":
+		return "◆", colCyan
+	default:
+		return "○", colMuted
+	}
+}
 
-	// Description or loading/error
+func drawDetailDescription(screen tcell.Screen, d *detailState, l *detailLayout, cy int) {
 	descAreaTop := cy
-	descAreaBot := oy + boxH - 3 // leave room for close hint + padding
+	descAreaBot := l.oy + l.boxH - 3
 	descAreaH := descAreaBot - descAreaTop
 	d.viewH = descAreaH
 
 	if d.loading {
-		drawText(screen, ox+padding, cy, "Loading description…", loadingStyle, maxCW)
+		drawText(screen, l.ox+l.padding, cy, "Loading description…", l.loadingStyle, l.maxCW)
 		d.maxScroll = 0
-	} else if d.err != "" {
-		drawText(screen, ox+padding, cy, truncStr(d.err, maxCW), errStyle, maxCW)
+		return
+	}
+	if d.err != "" {
+		drawText(screen, l.ox+l.padding, cy, truncStr(d.err, l.maxCW), l.errStyle, l.maxCW)
 		d.maxScroll = 0
-	} else if d.card.Description != "" {
-		descW := contentW - 2
-		segs := d.card.RichDesc
-		if segs == nil {
-			segs = []jira.DescSeg{{Text: d.card.Description, Style: jira.DsText}}
-		}
-		totalDescLines := richDescLineCount(segs, descW)
-		needsScrollbar := totalDescLines > descAreaH
-		if needsScrollbar {
-			descW--
-		}
-		totalDescLines = richDescLineCount(segs, descW)
-		d.maxScroll = max(0, totalDescLines-descAreaH)
-		if d.scroll > d.maxScroll {
-			d.scroll = d.maxScroll
-		}
-		drawRichWrappedText(screen, segs, ox+padding, descAreaTop, descW, descAreaBot, d.scroll, descStyle)
-		if needsScrollbar {
-			trackStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
-			thumbStyle := tcell.StyleDefault.Foreground(colBlue).Background(colPanel)
-			drawScrollbar(screen, ox+padding+descW+1, descAreaTop, descAreaH, d.scroll, totalDescLines, trackStyle, thumbStyle)
-		}
-	} else {
-		drawText(screen, ox+padding, cy, "No description", tcell.StyleDefault.Foreground(colMuted).Background(colPanel), maxCW)
+		return
+	}
+	if d.card.Description == "" {
+		drawText(screen, l.ox+l.padding, cy, "No description", tcell.StyleDefault.Foreground(colMuted).Background(colPanel), l.maxCW)
 		d.maxScroll = 0
+		return
 	}
 
-	if d.subDetail != nil {
-		drawDetailModal(screen, d.subDetail, screenW, screenH)
+	descW := l.contentW - 2
+	segs := d.card.RichDesc
+	if segs == nil {
+		segs = []jira.DescSeg{{Text: d.card.Description, Style: jira.DsText}}
+	}
+	totalDescLines := richDescLineCount(segs, descW)
+	needsScrollbar := totalDescLines > descAreaH
+	if needsScrollbar {
+		descW--
+	}
+	totalDescLines = richDescLineCount(segs, descW)
+	d.maxScroll = max(0, totalDescLines-descAreaH)
+	if d.scroll > d.maxScroll {
+		d.scroll = d.maxScroll
+	}
+	drawRichWrappedText(screen, segs, l.ox+l.padding, descAreaTop, descW, descAreaBot, d.scroll, l.descStyle)
+	if needsScrollbar {
+		trackStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
+		thumbStyle := tcell.StyleDefault.Foreground(colBlue).Background(colPanel)
+		drawScrollbar(screen, l.ox+l.padding+descW+1, descAreaTop, descAreaH, d.scroll, totalDescLines, trackStyle, thumbStyle)
 	}
 }
 

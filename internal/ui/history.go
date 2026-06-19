@@ -20,16 +20,21 @@ type historyState struct {
 	err      string
 }
 
+type historyLayout struct {
+	ox, boxW, boxH int
+	contentW        int
+	padding         int
+	maxVis          int
+	itemStyle       tcell.Style
+	selStyle        tcell.Style
+	sepStyle        tcell.Style
+	bgStyle         tcell.Style
+}
+
 func drawHistoryModal(screen tcell.Screen, h *historyState, screenW, screenH int) {
 	const padding = 2
 	contentW := 80
-	contentH := screenH - 8
-	if contentH < 10 {
-		contentH = 10
-	}
-	if contentH > 40 {
-		contentH = 40
-	}
+	contentH := clampHistoryHeight(screenH - 8)
 
 	boxW := contentW + padding*2
 	boxH := contentH + padding
@@ -43,148 +48,150 @@ func drawHistoryModal(screen tcell.Screen, h *historyState, screenW, screenH int
 
 	ox := (screenW - boxW) / 2
 	oy := (screenH - boxH) / 2
-
-	bgStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
-	borderStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
-	titleStyle := tcell.StyleDefault.Foreground(colBlue).Background(colPanel).Bold(true)
-	sepStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel).Dim(true)
-	itemStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
-	selStyle := tcell.StyleDefault.Foreground(colFg).Background(colCardSel).Bold(true)
-	errStyle := tcell.StyleDefault.Foreground(colRed).Background(colPanel).Bold(true)
-	loadingStyle := tcell.StyleDefault.Foreground(colCyan).Background(colPanel).Bold(true)
-	hintStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
-
-	for row := oy; row < oy+boxH; row++ {
-		fillRow(screen, ox, row, boxW, bgStyle)
-	}
-	drawBorder(screen, ox, oy, boxW, boxH, borderStyle)
-
-	cy := oy + 1
-	drawText(screen, ox+padding, cy, " Recent Activity ", titleStyle, contentW)
-	cy++
-	drawSep(screen, ox+padding, cy, contentW, sepStyle)
-	cy++
-
 	maxVis := (boxH - 5) / 2
 	if maxVis < 1 {
 		maxVis = 1
 	}
 
-	if h.loading {
-		drawText(screen, ox+padding, cy, "  Loading…", loadingStyle, contentW)
-		cy++
-	} else if h.err != "" {
-		drawText(screen, ox+padding, cy, " ✗ "+truncStr(h.err, contentW-3), errStyle, contentW)
-		cy++
-	} else if len(h.items) == 0 {
-		drawText(screen, ox+padding, cy, "  No recent activity", hintStyle, contentW)
-		cy++
-	} else {
-		// Scroll to keep selected item visible
-		if h.scrollY > h.selected {
-			h.scrollY = h.selected
-		}
-		if h.selected >= h.scrollY+maxVis {
-			h.scrollY = h.selected - maxVis + 1
-		}
-
-		for i := h.scrollY; i < len(h.items) && i < h.scrollY+maxVis; i++ {
-			it := h.items[i]
-			style := itemStyle
-			if i == h.selected {
-				style = selStyle
-			}
-
-			fillRow(screen, ox+1, cy, boxW-2, style)
-
-			// Status icon
-			icon := statusIcon(it.Status)
-			iconStyle := statusColorHistory(it.Status)
-			if i == h.selected {
-				iconStyle = iconStyle.Background(colCardSel).Bold(true)
-			}
-
-			screen.SetContent(ox+padding, cy, ' ', nil, style)
-			drawText(screen, ox+padding+1, cy, icon+" ", iconStyle, 4)
-
-			// Key
-			keyStyle := tcell.StyleDefault.Foreground(colCyan).Background(colPanel)
-			if i == h.selected {
-				keyStyle = tcell.StyleDefault.Foreground(colCyan).Background(colCardSel).Bold(true)
-			}
-			drawText(screen, ox+padding+4, cy, it.Key, keyStyle, 12)
-
-			// Summary (truncated)
-			sumW := contentW - 22
-			if it.Epic != "" {
-				sumW -= 10
-			}
-			if sumW < 10 {
-				sumW = 10
-			}
-			drawText(screen, ox+padding+17, cy, truncStr(it.Summary, sumW), style, sumW)
-
-			// Epic badge (right-aligned)
-			if it.Epic != "" {
-				epicCol := epicColor(it.Epic)
-				epicBadge := " " + truncStr(it.Epic, 8) + " "
-				epicBadgeStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(epicCol).Bold(true)
-				if i == h.selected {
-					epicBadgeStyle = tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(epicCol).Bold(true)
-				}
-				epicX := ox + padding + contentW - len([]rune(epicBadge)) - 1
-				drawText(screen, epicX, cy, epicBadge, epicBadgeStyle, len([]rune(epicBadge))+1)
-			}
-			cy++
-
-			// Change description line
-			fillRow(screen, ox+1, cy, boxW-2, style)
-			descStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
-			if i == h.selected {
-				descStyle = tcell.StyleDefault.Foreground(colMuted).Background(colCardSel)
-			}
-			var desc string
-			if it.ChangeDesc != "" && !it.Updated.IsZero() {
-				desc = it.ChangeDesc + " · " + relativeTime(it.Updated)
-			} else if it.ChangeDesc != "" {
-				desc = it.ChangeDesc
-			} else if !it.Updated.IsZero() {
-				desc = relativeTime(it.Updated)
-			}
-			if desc != "" {
-				drawText(screen, ox+padding+5, cy, truncStr(desc, contentW-6), descStyle, contentW-6)
-			}
-			cy++
-		}
-
-		// Scroll indicator
-		if len(h.items) > maxVis {
-			totalScroll := max(1, len(h.items)-maxVis)
-			barH := max(1, maxVis*2*maxVis/len(h.items))
-			barTop := oy + 3 + h.scrollY*(maxVis*2-barH)/totalScroll
-			for i := range maxVis * 2 {
-				if barTop+i >= oy+3 && barTop+i < oy+3+maxVis*2 {
-					screen.SetContent(ox+padding+contentW, oy+3+i, '▐', nil, tcell.StyleDefault.Foreground(colMuted).Background(colPanel))
-				}
-			}
-		}
+	l := historyLayout{
+		ox: ox, boxW: boxW, boxH: boxH,
+		contentW: contentW, padding: padding, maxVis: maxVis,
+		bgStyle:   tcell.StyleDefault.Foreground(colFg).Background(colPanel),
+		itemStyle: tcell.StyleDefault.Foreground(colFg).Background(colPanel),
+		selStyle:  tcell.StyleDefault.Foreground(colFg).Background(colCardSel).Bold(true),
+		sepStyle:  tcell.StyleDefault.Foreground(colMuted).Background(colPanel).Dim(true),
 	}
 
-	// Hint bar at bottom
+	for row := oy; row < oy+boxH; row++ {
+		fillRow(screen, ox, row, boxW, l.bgStyle)
+	}
+	drawBorder(screen, ox, oy, boxW, boxH, tcell.StyleDefault.Foreground(colMuted).Background(colPanel))
+
+	cy := oy + 1
+	drawText(screen, ox+padding, cy, " Recent Activity ", tcell.StyleDefault.Foreground(colBlue).Background(colPanel).Bold(true), contentW)
+	cy += 2
+	drawSep(screen, ox+padding, cy-1, contentW, l.sepStyle)
+
+	if h.loading {
+		drawText(screen, ox+padding, cy, "  Loading…", tcell.StyleDefault.Foreground(colCyan).Background(colPanel).Bold(true), contentW)
+	} else if h.err != "" {
+		drawText(screen, ox+padding, cy, " ✗ "+truncStr(h.err, contentW-3), tcell.StyleDefault.Foreground(colRed).Background(colPanel).Bold(true), contentW)
+	} else if len(h.items) == 0 {
+		drawText(screen, ox+padding, cy, "  No recent activity", tcell.StyleDefault.Foreground(colMuted).Background(colPanel), contentW)
+	} else {
+		drawHistoryItems(screen, h, &l, cy)
+		drawHistoryScrollbar(screen, h, &l, oy)
+	}
+
 	hintY := oy + boxH - 2
-	drawSep(screen, ox+padding, hintY-1, contentW, sepStyle)
-	fillRow(screen, ox+1, hintY, boxW-2, bgStyle)
-	drawText(screen, ox+padding, hintY, " Esc/q close • Enter open • ↑/↓ scroll", hintStyle, contentW)
+	drawSep(screen, ox+padding, hintY-1, contentW, l.sepStyle)
+	fillRow(screen, ox+1, hintY, boxW-2, l.bgStyle)
+	drawText(screen, ox+padding, hintY, " Esc/q close • Enter open • ↑/↓ scroll", tcell.StyleDefault.Foreground(colMuted).Background(colPanel), contentW)
+}
+
+func clampHistoryHeight(h int) int {
+	return max(10, min(40, h))
+}
+
+func drawHistoryItems(screen tcell.Screen, h *historyState, l *historyLayout, startCy int) {
+	if h.scrollY > h.selected {
+		h.scrollY = h.selected
+	}
+	if h.selected >= h.scrollY+l.maxVis {
+		h.scrollY = h.selected - l.maxVis + 1
+	}
+
+	cy := startCy
+	for i := h.scrollY; i < len(h.items) && i < h.scrollY+l.maxVis; i++ {
+		it := h.items[i]
+		isSel := i == h.selected
+		style := l.itemStyle
+		if isSel {
+			style = l.selStyle
+		}
+
+		fillRow(screen, l.ox+1, cy, l.boxW-2, style)
+
+		icon := statusIcon(it.Status)
+		iconStyle := statusColorHistory(it.Status)
+		if isSel {
+			iconStyle = iconStyle.Background(colCardSel).Bold(true)
+		}
+
+		screen.SetContent(l.ox+l.padding, cy, ' ', nil, style)
+		drawText(screen, l.ox+l.padding+1, cy, icon+" ", iconStyle, 4)
+
+		keyStyle := tcell.StyleDefault.Foreground(colCyan).Background(colPanel)
+		if isSel {
+			keyStyle = tcell.StyleDefault.Foreground(colCyan).Background(colCardSel).Bold(true)
+		}
+		drawText(screen, l.ox+l.padding+4, cy, it.Key, keyStyle, 12)
+
+		sumW := l.contentW - 22
+		if it.Epic != "" {
+			sumW -= 10
+		}
+		sumW = max(10, sumW)
+		drawText(screen, l.ox+l.padding+17, cy, truncStr(it.Summary, sumW), style, sumW)
+
+		if it.Epic != "" {
+			epicCol := epicColor(it.Epic)
+			epicBadge := " " + truncStr(it.Epic, 8) + " "
+			epicBadgeStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(epicCol).Bold(true)
+			epicX := l.ox + l.padding + l.contentW - len([]rune(epicBadge)) - 1
+			drawText(screen, epicX, cy, epicBadge, epicBadgeStyle, len([]rune(epicBadge))+1)
+		}
+		cy++
+
+		fillRow(screen, l.ox+1, cy, l.boxW-2, style)
+		descStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
+		if isSel {
+			descStyle = tcell.StyleDefault.Foreground(colMuted).Background(colCardSel)
+		}
+		desc := historyChangeDesc(it)
+		if desc != "" {
+			drawText(screen, l.ox+l.padding+5, cy, truncStr(desc, l.contentW-6), descStyle, l.contentW-6)
+		}
+		cy++
+	}
+}
+
+func historyChangeDesc(it jira.HistoryItem) string {
+	if it.ChangeDesc != "" && !it.Updated.IsZero() {
+		return it.ChangeDesc + " · " + relativeTime(it.Updated)
+	}
+	if it.ChangeDesc != "" {
+		return it.ChangeDesc
+	}
+	if !it.Updated.IsZero() {
+		return relativeTime(it.Updated)
+	}
+	return ""
+}
+
+func drawHistoryScrollbar(screen tcell.Screen, h *historyState, l *historyLayout, oy int) {
+	if len(h.items) <= l.maxVis {
+		return
+	}
+	totalScroll := max(1, len(h.items)-l.maxVis)
+	barH := max(1, l.maxVis*2*l.maxVis/len(h.items))
+	barTop := oy + 3 + h.scrollY*(l.maxVis*2-barH)/totalScroll
+	scrollStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
+	for i := range l.maxVis * 2 {
+		if barTop+i >= oy+3 && barTop+i < oy+3+l.maxVis*2 {
+			screen.SetContent(l.ox+l.padding+l.contentW, oy+3+i, '▐', nil, scrollStyle)
+		}
+	}
 }
 
 // statusIcon returns a visual icon for a status name.
 func statusIcon(status string) string {
-	switch {
-	case status == "Done" || status == "Closed":
+	switch status {
+	case "Done", "Closed":
 		return "✓"
-	case status == "In Progress" || status == "In Review":
+	case "In Progress", "In Review":
 		return "●"
-	case status == "To Do" || status == "Open" || status == "Backlog":
+	case "To Do", "Open", "Backlog":
 		return "○"
 	default:
 		return "◆"
@@ -193,12 +200,12 @@ func statusIcon(status string) string {
 
 // statusColorHistory returns a color for a status icon in the history view.
 func statusColorHistory(status string) tcell.Style {
-	switch {
-	case status == "Done" || status == "Closed":
+	switch status {
+	case "Done", "Closed":
 		return tcell.StyleDefault.Foreground(colGreen).Background(colPanel)
-	case status == "In Progress" || status == "In Review":
+	case "In Progress", "In Review":
 		return tcell.StyleDefault.Foreground(colBlue).Background(colPanel)
-	case status == "To Do" || status == "Open" || status == "Backlog":
+	case "To Do", "Open", "Backlog":
 		return tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
 	default:
 		return tcell.StyleDefault.Foreground(colOrange).Background(colPanel)

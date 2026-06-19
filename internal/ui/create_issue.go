@@ -132,18 +132,18 @@ func (c *createIssueState) stopDebounce() {
 func (c *createIssueState) clampCur() {
 	switch c.field {
 	case cfSummary:
-		c.sumCur = clamp(c.sumCur, 0, len([]rune(c.summary)))
+		c.sumCur = clamp(c.sumCur, len([]rune(c.summary)))
 	case cfDescription:
-		c.descCur = clamp(c.descCur, 0, len([]rune(c.desc)))
-		c.descAutoScroll(descWrapW)
+		c.descCur = clamp(c.descCur, len([]rune(c.desc)))
+		c.descAutoScroll()
 	case cfEpic:
-		c.epicCur = clamp(c.epicCur, 0, len([]rune(c.epicQuery)))
+		c.epicCur = clamp(c.epicCur, len([]rune(c.epicQuery)))
 		items := c.filteredEpics()
 		if c.epicSel >= len(items) {
 			c.epicSel = max(0, len(items)-1)
 		}
 	case cfButtons:
-		c.btnIdx = clamp(c.btnIdx, 0, 1)
+		c.btnIdx = clamp(c.btnIdx, 1)
 	}
 }
 
@@ -179,7 +179,7 @@ func (c *createIssueState) typeRune(r rune) {
 		runes := []rune(c.desc)
 		c.desc = string(runes[:c.descCur]) + string(r) + string(runes[c.descCur:])
 		c.descCur++
-		c.descAutoScroll(descWrapW)
+		c.descAutoScroll()
 	case cfEpic:
 		runes := []rune(c.epicQuery)
 		c.epicQuery = string(runes[:c.epicCur]) + string(r) + string(runes[c.epicCur:])
@@ -201,7 +201,7 @@ func (c *createIssueState) backspace() {
 			runes := []rune(c.desc)
 			c.desc = string(runes[:c.descCur-1]) + string(runes[c.descCur:])
 			c.descCur--
-			c.descAutoScroll(descWrapW)
+			c.descAutoScroll()
 		}
 	case cfEpic:
 		if c.epicCur > 0 {
@@ -240,7 +240,7 @@ func (c *createIssueState) deleteForward() {
 		runes := []rune(c.desc)
 		if c.descCur < len(runes) {
 			c.desc = string(runes[:c.descCur]) + string(runes[c.descCur+1:])
-			c.descAutoScroll(descWrapW)
+			c.descAutoScroll()
 		}
 	case cfEpic:
 		runes := []rune(c.epicQuery)
@@ -259,17 +259,17 @@ func (c *createIssueState) handleNewline() {
 		runes := []rune(c.desc)
 		c.desc = string(runes[:c.descCur]) + "\n" + string(runes[c.descCur:])
 		c.descCur++
-		c.descAutoScroll(descWrapW)
+		c.descAutoScroll()
 	}
 }
 
 // descAutoScroll adjusts descScroll so the cursor line is always visible.
-// w is the content width used for line wrapping.
-func (c *createIssueState) descAutoScroll(w int) {
-	lines := descLines(c.desc, w)
+// descAutoScroll adjusts descScroll so the cursor line is always visible.
+func (c *createIssueState) descAutoScroll() {
+	lines := descLines(c.desc)
 	curLine := c.descCurLine(lines)
 	maxScroll := max(0, len(lines)-descVisH)
-	c.descScroll = clamp(c.descScroll, 0, maxScroll)
+	c.descScroll = clamp(c.descScroll, maxScroll)
 	if curLine < c.descScroll {
 		c.descScroll = curLine
 	} else if curLine >= c.descScroll+descVisH {
@@ -333,10 +333,10 @@ func (c *createIssueState) descMoveDown(lines []string) {
 	c.descCur = offsets[curLine+1] + newCol
 }
 
-func clamp(v, lo, hi int) int { return max(lo, min(v, hi)) }
+func clamp(v, hi int) int { return max(0, min(v, hi)) }
 
 // descLines splits the description into display lines, wrapping long lines at width.
-func descLines(desc string, w int) []string {
+func descLines(desc string) []string {
 	if desc == "" {
 		return nil
 	}
@@ -347,7 +347,7 @@ func descLines(desc string, w int) []string {
 			continue
 		}
 		for len(para) > 0 {
-			cut := min(len(para), w)
+			cut := min(len(para), descWrapW)
 			lines = append(lines, para[:cut])
 			para = para[cut:]
 		}
@@ -424,11 +424,16 @@ const descVisH = 3
 // (matches contentW-2 from drawCreateIssue where contentW=54).
 const descWrapW = 52
 
+// createLayout holds computed layout values for the create-issue modal.
+type createLayout struct {
+	ox, oy, boxW, boxH, contentW int
+}
+
 func drawCreateIssue(screen tcell.Screen, c *createIssueState, screenW, screenH int, _ string) {
 	const padding = 2
 	contentW := 54
 
-	descExtra := descVisH - 1 // description field uses descVisH rows instead of 1
+	descExtra := descVisH - 1
 
 	epicListH := 0
 	epicSepRow := 0
@@ -453,6 +458,7 @@ func drawCreateIssue(screen tcell.Screen, c *createIssueState, screenW, screenH 
 
 	ox := (screenW - boxW) / 2
 	oy := (screenH - boxH) / 2
+	lay := createLayout{ox, oy, boxW, boxH, contentW}
 
 	bgStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
 	borderStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
@@ -481,12 +487,25 @@ func drawCreateIssue(screen tcell.Screen, c *createIssueState, screenW, screenH 
 	drawSep(screen, ox+padding, cy, contentW, sepStyle)
 	cy++
 
-	// ── Type ──────────────────────────────────────────────────────────────
+	cy = drawCreateTypeSection(screen, c, lay, cy, labelStyle, activeLabelStyle, activeBorder, sepStyle)
+	cy = drawCreateSummarySection(screen, c, lay, cy, labelStyle, activeLabelStyle, inputStyle, activeInputStyle, inputPlaceholder, activeBorder, sepStyle)
+	cy = drawCreateDescSection(screen, c, lay, cy, labelStyle, activeLabelStyle, inputStyle, activeInputStyle, inputPlaceholder, activeBorder)
+	cy = drawCreateEpicSection(screen, c, lay, cy, labelStyle, activeLabelStyle, inputStyle, activeInputStyle, inputPlaceholder, activeBorder, sepStyle, bgStyle)
+
+	if c.errMsg != "" {
+		cy++
+		drawText(screen, ox+padding, cy, " ✗ "+truncStr(c.errMsg, contentW-3), errStyle, contentW)
+	}
+
+	drawCreateButtons(screen, c, lay, bgStyle, sepStyle, borderStyle)
+}
+
+func drawCreateTypeSection(screen tcell.Screen, c *createIssueState, lay createLayout, cy int, labelStyle, activeLabelStyle, activeBorder, sepStyle tcell.Style) int {
 	lStyle := labelStyle
 	if c.field == cfType {
 		lStyle = activeLabelStyle
 	}
-	drawText(screen, ox+padding, cy, " Type", lStyle, contentW)
+	drawText(screen, lay.ox+2, cy, " Type", lStyle, lay.contentW)
 	cy++
 	icon, typeBg := typeStyle(c.currentTypeName())
 	bStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(typeBg).Bold(true)
@@ -497,58 +516,61 @@ func drawCreateIssue(screen tcell.Screen, c *createIssueState, screenW, screenH 
 		badgeRowBg = tcell.StyleDefault.Foreground(colFg).Background(colCardSel)
 		badgeRowBorderSt = activeBorder
 	}
-	screen.SetContent(ox+padding, cy, '│', nil, badgeRowBorderSt)
-	fillRow(screen, ox+padding+1, cy, contentW-2, badgeRowBg)
-	drawText(screen, ox+padding+1, cy, badge, bStyle, contentW-2)
+	screen.SetContent(lay.ox+2, cy, '│', nil, badgeRowBorderSt)
+	fillRow(screen, lay.ox+3, cy, lay.contentW-2, badgeRowBg)
+	drawText(screen, lay.ox+3, cy, badge, bStyle, lay.contentW-2)
 	if c.field == cfType {
-		drawText(screen, ox+padding+1+len([]rune(badge))+1, cy, "\u2190/\u2192", tcell.StyleDefault.Foreground(colMuted).Background(colCardSel), contentW-2)
-		screen.SetContent(ox+padding+contentW-1, cy, '│', nil, badgeRowBorderSt)
+		drawText(screen, lay.ox+3+len([]rune(badge))+1, cy, "\u2190/\u2192", tcell.StyleDefault.Foreground(colMuted).Background(colCardSel), lay.contentW-2)
+		screen.SetContent(lay.ox+2+lay.contentW-1, cy, '│', nil, badgeRowBorderSt)
 	}
 	cy++
-	drawSep(screen, ox+padding, cy, contentW, sepStyle)
+	drawSep(screen, lay.ox+2, cy, lay.contentW, sepStyle)
 	cy++
+	return cy
+}
 
-	// ── Summary ───────────────────────────────────────────────────────────
-	lStyle = labelStyle
+func drawCreateSummarySection(screen tcell.Screen, c *createIssueState, lay createLayout, cy int, labelStyle, activeLabelStyle, inputStyle, activeInputStyle, inputPlaceholder, activeBorder, sepStyle tcell.Style) int {
+	lStyle := labelStyle
 	if c.field == cfSummary {
 		lStyle = activeLabelStyle
 	}
-	drawText(screen, ox+padding, cy, " Summary", lStyle, contentW)
+	drawText(screen, lay.ox+2, cy, " Summary", lStyle, lay.contentW)
 	cy++
-	drawInputField(screen, ox+padding, cy, contentW, c.summary, "Issue title…", c.field == cfSummary, c.sumCur, inputStyle, activeInputStyle, inputPlaceholder, activeBorder)
+	drawInputField(screen, lay.ox+2, cy, lay.contentW, c.summary, "Issue title…", c.field == cfSummary, c.sumCur, inputStyle, activeInputStyle, inputPlaceholder, activeBorder)
 	cy++
-	drawSep(screen, ox+padding, cy, contentW, sepStyle)
+	drawSep(screen, lay.ox+2, cy, lay.contentW, sepStyle)
 	cy++
+	return cy
+}
 
-	// ── Description ────────────────────────────────────────────────────────
-	lStyle = labelStyle
+func drawCreateDescSection(screen tcell.Screen, c *createIssueState, lay createLayout, cy int, labelStyle, activeLabelStyle, inputStyle, activeInputStyle, inputPlaceholder, activeBorder tcell.Style) int {
+	lStyle := labelStyle
 	if c.field == cfDescription {
 		lStyle = activeLabelStyle
 	}
-	drawText(screen, ox+padding, cy, " Description", lStyle, contentW)
+	drawText(screen, lay.ox+2, cy, " Description", lStyle, lay.contentW)
 	cy++
 
-	// Multiline description box with scroll
 	descBoxY := cy
 	descBoxH := descVisH
 	for row := 0; row < descBoxH; row++ {
-		screen.SetContent(ox+padding, cy, '│', nil, tcell.StyleDefault.Foreground(colMuted).Background(colBg))
-		fillRow(screen, ox+padding+1, cy, contentW-1, inputStyle)
+		screen.SetContent(lay.ox+2, cy, '│', nil, tcell.StyleDefault.Foreground(colMuted).Background(colBg))
+		fillRow(screen, lay.ox+3, cy, lay.contentW-1, inputStyle)
 		cy++
 	}
 
-	lines := descLines(c.desc, descWrapW)
+	lines := descLines(c.desc)
 	maxScroll := max(0, len(lines)-descBoxH)
-	c.descScroll = clamp(c.descScroll, 0, maxScroll)
+	c.descScroll = clamp(c.descScroll, maxScroll)
 
 	for i := 0; i < descBoxH; i++ {
 		lineIdx := c.descScroll + i
 		row := descBoxY + i
-		screen.SetContent(ox+padding, row, '│', nil, tcell.StyleDefault.Foreground(colMuted).Background(colBg))
-		fillRow(screen, ox+padding+1, row, contentW-1, inputStyle)
+		screen.SetContent(lay.ox+2, row, '│', nil, tcell.StyleDefault.Foreground(colMuted).Background(colBg))
+		fillRow(screen, lay.ox+3, row, lay.contentW-1, inputStyle)
 		if c.field == cfDescription {
-			screen.SetContent(ox+padding, row, '│', nil, activeBorder)
-			fillRow(screen, ox+padding+1, row, contentW-1, activeInputStyle)
+			screen.SetContent(lay.ox+2, row, '│', nil, activeBorder)
+			fillRow(screen, lay.ox+3, row, lay.contentW-1, activeInputStyle)
 		}
 
 		if lineIdx < len(lines) {
@@ -556,136 +578,137 @@ func drawCreateIssue(screen tcell.Screen, c *createIssueState, screenW, screenH 
 			if c.field == cfDescription {
 				st = activeInputStyle
 			}
-			drawText(screen, ox+padding+1, row, lines[lineIdx], st, contentW-2)
+			drawText(screen, lay.ox+3, row, lines[lineIdx], st, lay.contentW-2)
 		} else if lineIdx == len(lines) && c.field == cfDescription && c.desc == "" {
-			drawText(screen, ox+padding+1, row, "Optional, Enter for newline…", inputPlaceholder, contentW-2)
+			drawText(screen, lay.ox+3, row, "Optional, Enter for newline…", inputPlaceholder, lay.contentW-2)
 		}
 	}
 
-	// Cursor position
 	if c.field == cfDescription && c.desc != "" {
-		cursorSt := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(colCyan).Bold(true)
-		curLine := c.descCurLine(lines)
-		offsets := descLineOffsets(c.desc, lines)
-		curCol := c.descCur - offsets[curLine]
-		lineRunes := len([]rune(lines[curLine]))
-		if curCol > lineRunes {
-			curCol = lineRunes
-		}
-		if curCol < 0 {
-			curCol = 0
-		}
-		curRow := descBoxY + curLine - c.descScroll
-		if curRow >= descBoxY && curRow < descBoxY+descBoxH {
-			col := ox + padding + 1 + curCol
-			if curCol < lineRunes {
-				ch := []rune(lines[curLine])[curCol]
-				screen.SetContent(col, curRow, ch, nil, cursorSt)
-			} else {
-				screen.SetContent(col, curRow, '▏', nil, activeInputStyle)
-			}
-		}
+		drawDescCursor(screen, c, lay, descBoxY, descBoxH, lines, activeInputStyle)
 	}
 
-	// Scroll indicator
 	if c.field == cfDescription && len(lines) > descBoxH {
-		totalScroll := max(1, len(lines)-descBoxH)
-		barH := max(1, descBoxH*descBoxH/len(lines))
-		barTop := descBoxY + c.descScroll*(descBoxH-barH)/totalScroll
-		for i := 0; i < barH && barTop+i < descBoxY+descBoxH; i++ {
-			screen.SetContent(ox+padding+contentW-1, barTop+i, '▐', nil, tcell.StyleDefault.Foreground(colMuted).Background(colBg))
-		}
+		drawDescScrollbar(screen, lay, descBoxY, descBoxH, c, lines)
 	}
 
-	cy = descBoxY + descBoxH
-	drawSep(screen, ox+padding, cy, contentW, sepStyle)
+	return descBoxY + descBoxH
+}
+
+func drawDescCursor(screen tcell.Screen, c *createIssueState, lay createLayout, descBoxY, descBoxH int, lines []string, activeInputStyle tcell.Style) {
+	cursorSt := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(colCyan).Bold(true)
+	curLine := c.descCurLine(lines)
+	offsets := descLineOffsets(c.desc, lines)
+	curCol := c.descCur - offsets[curLine]
+	lineRunes := len([]rune(lines[curLine]))
+	if curCol > lineRunes {
+		curCol = lineRunes
+	}
+	if curCol < 0 {
+		curCol = 0
+	}
+	curRow := descBoxY + curLine - c.descScroll
+	if curRow >= descBoxY && curRow < descBoxY+descBoxH {
+		col := lay.ox + 3 + curCol
+		if curCol < lineRunes {
+			ch := []rune(lines[curLine])[curCol]
+			screen.SetContent(col, curRow, ch, nil, cursorSt)
+		} else {
+			screen.SetContent(col, curRow, '▏', nil, activeInputStyle)
+		}
+	}
+}
+
+func drawDescScrollbar(screen tcell.Screen, lay createLayout, descBoxY, descBoxH int, c *createIssueState, lines []string) {
+	totalScroll := max(1, len(lines)-descBoxH)
+	barH := max(1, descBoxH*descBoxH/len(lines))
+	barTop := descBoxY + c.descScroll*(descBoxH-barH)/totalScroll
+	for i := 0; i < barH && barTop+i < descBoxY+descBoxH; i++ {
+		screen.SetContent(lay.ox+2+lay.contentW-1, barTop+i, '▐', nil, tcell.StyleDefault.Foreground(colMuted).Background(colBg))
+	}
+}
+
+func drawCreateEpicSection(screen tcell.Screen, c *createIssueState, lay createLayout, cy int, labelStyle, activeLabelStyle, inputStyle, activeInputStyle, inputPlaceholder, activeBorder, sepStyle, bgStyle tcell.Style) int {
+	if c.isSubtask() {
+		return cy
+	}
+	lStyle := labelStyle
+	if c.field == cfEpic {
+		lStyle = activeLabelStyle
+	}
+	epicLabel := " Epic"
+	if c.epicKey != "" && c.field != cfEpic {
+		epicLabel = " Epic  ✓ " + c.epicKey + " — " + truncStr(c.epicName, lay.contentW-12)
+	}
+	drawText(screen, lay.ox+2, cy, epicLabel, lStyle, lay.contentW)
 	cy++
 
-	// ── Epic ──────────────────────────────────────────────────────────────
-	if !c.isSubtask() {
-		lStyle = labelStyle
+	if c.field == cfEpic && c.epicKey == "" {
+		drawInputField(screen, lay.ox+2, cy, lay.contentW, c.epicQuery, "Search epic…", true, c.epicCur, inputStyle, activeInputStyle, inputPlaceholder, activeBorder)
+		cy++
+		drawSep(screen, lay.ox+2, cy, lay.contentW, sepStyle)
+		cy++
+
+		items := c.filteredEpics()
+		epicBtnY := lay.oy + lay.boxH - 2
+		for i := range items {
+			style := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
+			prefix := "  "
+			if i == c.epicSel {
+				style = tcell.StyleDefault.Foreground(colFg).Background(colCardSel).Bold(true)
+				prefix = "▸ "
+			}
+			text := items[i].Key + "  " + truncStr(items[i].Summary, lay.contentW-10)
+			fillRow(screen, lay.ox+1, cy, lay.boxW-2, style)
+			drawText(screen, lay.ox+2, cy, prefix+text, style, lay.contentW)
+			cy++
+		}
+		for cy < epicBtnY {
+			fillRow(screen, lay.ox+1, cy, lay.boxW-2, bgStyle)
+			cy++
+		}
+		if len(items) == 0 && c.epicQuery != "" {
+			if !c.epicLoaded {
+				drawText(screen, lay.ox+2, epicBtnY-2, "  Loading epics…", tcell.StyleDefault.Foreground(colCyan).Background(colPanel), lay.contentW)
+			} else {
+				drawText(screen, lay.ox+2, epicBtnY-2, "  No epics found", inputPlaceholder, lay.contentW)
+			}
+		}
+	} else if c.epicKey != "" {
+		epicIcon, epicBg := typeStyle("Epic")
+		epicBadgeStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(epicBg).Bold(true)
+		badge := " " + epicIcon + " " + truncStr(c.epicKey+" "+c.epicName, lay.contentW-4) + " "
+		screen.SetContent(lay.ox+2, cy, '│', nil, tcell.StyleDefault.Foreground(colMuted).Background(colBg))
+		fillRow(screen, lay.ox+3, cy, lay.contentW-2, tcell.StyleDefault.Foreground(colFg).Background(colBg))
 		if c.field == cfEpic {
-			lStyle = activeLabelStyle
+			screen.SetContent(lay.ox+2, cy, '│', nil, activeBorder)
+			fillRow(screen, lay.ox+3, cy, lay.contentW-2, activeInputStyle)
+			screen.SetContent(lay.ox+2+lay.contentW-1, cy, '│', nil, activeBorder)
 		}
-		epicLabel := " Epic"
-		if c.epicKey != "" && c.field != cfEpic {
-			epicLabel = " Epic  ✓ " + c.epicKey + " — " + truncStr(c.epicName, contentW-12)
+		drawText(screen, lay.ox+3, cy, badge, epicBadgeStyle, lay.contentW-2)
+		if c.field == cfEpic {
+			drawText(screen, lay.ox+3+len([]rune(badge))+1, cy, "Ctrl+U clear", tcell.StyleDefault.Foreground(colMuted).Background(colCardSel), lay.contentW-2)
 		}
-		drawText(screen, ox+padding, cy, epicLabel, lStyle, contentW)
 		cy++
-
-		if c.field == cfEpic && c.epicKey == "" {
-			drawInputField(screen, ox+padding, cy, contentW, c.epicQuery, "Search epic…", true, c.epicCur, inputStyle, activeInputStyle, inputPlaceholder, activeBorder)
-			cy++
-			drawSep(screen, ox+padding, cy, contentW, sepStyle)
-			cy++
-
-			items := c.filteredEpics()
-			epicBtnY := oy + boxH - 2
-			for i := range items {
-				style := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
-				prefix := "  "
-				if i == c.epicSel {
-					style = tcell.StyleDefault.Foreground(colFg).Background(colCardSel).Bold(true)
-					prefix = "▸ "
-				}
-				text := items[i].Key + "  " + truncStr(items[i].Summary, contentW-10)
-				fillRow(screen, ox+1, cy, boxW-2, style)
-				drawText(screen, ox+padding, cy, prefix+text, style, contentW)
-				cy++
-			}
-			for cy < epicBtnY {
-				fillRow(screen, ox+1, cy, boxW-2, bgStyle)
-				cy++
-			}
-			if len(items) == 0 && c.epicQuery != "" {
-				if !c.epicLoaded {
-					drawText(screen, ox+padding, epicBtnY-2, "  Loading epics…", tcell.StyleDefault.Foreground(colCyan).Background(colPanel), contentW)
-				} else {
-					drawText(screen, ox+padding, epicBtnY-2, "  No epics found", inputPlaceholder, contentW)
-				}
-			}
-		} else if c.epicKey != "" {
-			epicIcon, epicBg := typeStyle("Epic")
-			epicBadgeStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(epicBg).Bold(true)
-			badge := " " + epicIcon + " " + truncStr(c.epicKey+" "+c.epicName, contentW-4) + " "
-			screen.SetContent(ox+padding, cy, '│', nil, tcell.StyleDefault.Foreground(colMuted).Background(colBg))
-			fillRow(screen, ox+padding+1, cy, contentW-2, tcell.StyleDefault.Foreground(colFg).Background(colBg))
-			if c.field == cfEpic {
-				screen.SetContent(ox+padding, cy, '│', nil, activeBorder)
-				fillRow(screen, ox+padding+1, cy, contentW-2, activeInputStyle)
-				screen.SetContent(ox+padding+contentW-1, cy, '│', nil, activeBorder)
-			}
-			drawText(screen, ox+padding+1, cy, badge, epicBadgeStyle, contentW-2)
-			if c.field == cfEpic {
-				drawText(screen, ox+padding+1+len([]rune(badge))+1, cy, "Ctrl+U clear", tcell.StyleDefault.Foreground(colMuted).Background(colCardSel), contentW-2)
-			}
-			cy++
-		} else {
-			fillRow(screen, ox+padding, cy, contentW, tcell.StyleDefault.Foreground(colMuted).Background(colBg))
-			drawText(screen, ox+padding, cy, "  None", inputPlaceholder, contentW)
-			cy++
-		}
-	}
-
-	// Error
-	if c.errMsg != "" {
+	} else {
+		fillRow(screen, lay.ox+2, cy, lay.contentW, tcell.StyleDefault.Foreground(colMuted).Background(colBg))
+		drawText(screen, lay.ox+2, cy, "  None", inputPlaceholder, lay.contentW)
 		cy++
-		drawText(screen, ox+padding, cy, " ✗ "+truncStr(c.errMsg, contentW-3), errStyle, contentW)
 	}
+	return cy
+}
 
-	// Buttons at bottom
-	btnY := oy + boxH - 2
-	// Separator row between content and buttons
-	drawSep(screen, ox+padding, btnY-1, contentW, sepStyle)
-	fillRow(screen, ox+1, btnY, boxW-2, bgStyle)
+func drawCreateButtons(screen tcell.Screen, c *createIssueState, lay createLayout, bgStyle, sepStyle, borderStyle tcell.Style) {
+	btnY := lay.oy + lay.boxH - 2
+	drawSep(screen, lay.ox+2, btnY-1, lay.contentW, sepStyle)
+	fillRow(screen, lay.ox+1, btnY, lay.boxW-2, bgStyle)
 	createStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(colGreen).Bold(true)
 	cancelStyle := tcell.StyleDefault.Foreground(colFg).Background(colMuted)
 	createText := " Create "
 	cancelText := " Cancel "
 	gap := 3
 	totalBtnW := len([]rune(createText)) + gap + len([]rune(cancelText))
-	btnX := ox + (boxW-totalBtnW)/2
+	btnX := lay.ox + (lay.boxW-totalBtnW)/2
 	if c.field == cfButtons {
 		if c.btnIdx == 0 {
 			createStyle = tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(colCyan).Bold(true)
@@ -693,18 +716,17 @@ func drawCreateIssue(screen tcell.Screen, c *createIssueState, screenW, screenH 
 			cancelStyle = tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(colCyan).Bold(true)
 		}
 	}
-	drawText(screen, btnX, btnY, createText, createStyle, contentW)
+	drawText(screen, btnX, btnY, createText, createStyle, lay.contentW)
 	btnX += len([]rune(createText)) + gap
-	drawText(screen, btnX, btnY, cancelText, cancelStyle, contentW)
+	drawText(screen, btnX, btnY, cancelText, cancelStyle, lay.contentW)
 
-	// Creating overlay
 	if c.creating {
-		for row := oy; row < oy+boxH; row++ {
-			fillRow(screen, ox, row, boxW, tcell.StyleDefault.Foreground(colFg).Background(colPanel).Dim(true))
+		for row := lay.oy; row < lay.oy+lay.boxH; row++ {
+			fillRow(screen, lay.ox, row, lay.boxW, tcell.StyleDefault.Foreground(colFg).Background(colPanel).Dim(true))
 		}
-		drawBorder(screen, ox, oy, boxW, boxH, borderStyle.Dim(true))
+		drawBorder(screen, lay.ox, lay.oy, lay.boxW, lay.boxH, borderStyle.Dim(true))
 		creatingStyle := tcell.StyleDefault.Foreground(colCyan).Background(colPanel).Bold(true)
-		drawText(screen, ox+(boxW-len([]rune(" Creating…")))/2, oy+boxH/2, " Creating…", creatingStyle, boxW)
+		drawText(screen, lay.ox+(lay.boxW-len([]rune(" Creating…")))/2, lay.oy+lay.boxH/2, " Creating…", creatingStyle, lay.boxW)
 	}
 }
 

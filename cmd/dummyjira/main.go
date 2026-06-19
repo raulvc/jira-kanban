@@ -103,165 +103,13 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/rest/agile/1.0/board/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if strings.Contains(r.URL.Path, "/configuration") {
-			_ = json.NewEncoder(w).Encode(boardConfig())
-			return
-		}
-		_ = json.NewEncoder(w).Encode(boardIssues())
-	})
-
-	mux.HandleFunc("/rest/api/3/search/jql", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.Method == http.MethodGet {
-			jql := r.URL.Query().Get("jql")
-			if strings.Contains(jql, "type = Epic") || strings.Contains(strings.ToLower(jql), "type = epic") {
-				query := strings.ToLower(r.URL.Query().Get("query"))
-				_ = json.NewEncoder(w).Encode(epicSearchResults(query))
-				return
-			}
-		}
-		// POST with JQL body — return all issues
-		_ = json.NewEncoder(w).Encode(searchResults())
-	})
-
-	mux.HandleFunc("/rest/api/3/user/assignable/search", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		query := strings.ToLower(r.URL.Query().Get("query"))
-		store.RLock()
-		defer store.RUnlock()
-		_ = json.NewEncoder(w).Encode(filterAssignees(query))
-	})
-
-	mux.HandleFunc("/rest/api/3/myself", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"accountId":    "current-user",
-			"displayName":  "Demo User",
-			"emailAddress": "demo@example.com",
-			"active":       true,
-		})
-	})
-
-	mux.HandleFunc("/rest/api/3/project/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(projectDetail())
-	})
-
-	mux.HandleFunc("/rest/api/3/issue", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		var body struct {
-			Fields struct {
-				Parent    map[string]string `json:"parent"`
-				Project   map[string]string `json:"project"`
-				IssueType map[string]string `json:"issuetype"`
-				Summary   string            `json:"summary"`
-			} `json:"fields"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, err.Error(), 400)
-			return
-		}
-		store.Lock()
-		store.nextID++
-		id := store.nextID
-		key := fmt.Sprintf("ENG-%d", id)
-		isSubtask := body.Fields.Parent != nil && body.Fields.Parent["key"] != ""
-		statusID := "2"
-		statusName := "To Do"
-		if isSubtask {
-			parentKey := body.Fields.Parent["key"]
-			if parent, ok := store.issues[parentKey]; ok {
-				statusID = parent.StatusID
-				statusName = parent.StatusName
-			}
-		}
-		store.issues[key] = &issueStatus{
-			Key:        key,
-			Summary:    body.Fields.Summary,
-			StatusID:   statusID,
-			StatusName: statusName,
-		}
-		store.Unlock()
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id":   strconv.Itoa(id),
-			"key":  key,
-			"self":  "http://localhost:9191/rest/api/3/issue/" + key,
-		})
-	})
-
-	mux.HandleFunc("/rest/api/3/issue/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		path := r.URL.Path
-
-		if r.Method == http.MethodPut && strings.HasSuffix(path, "/assignee") {
-			key := extractIssueKey(path, "/assignee")
-			var body struct {
-				AccountID string `json:"accountId"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				http.Error(w, err.Error(), 400)
-				return
-			}
-			store.Lock()
-			if iss, ok := store.issues[key]; ok {
-				iss.Assignee = assigneeName(body.AccountID)
-				store.assignees[key] = body.AccountID
-			}
-			store.Unlock()
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-
-		if r.Method == http.MethodGet && strings.HasSuffix(path, "/transitions") {
-			_ = json.NewEncoder(w).Encode(transitions())
-			return
-		}
-
-		if r.Method == http.MethodGet {
-			key, ok := strings.CutPrefix(path, "/rest/api/3/issue/")
-			if !ok {
-				http.NotFound(w, r)
-				return
-			}
-			key = strings.TrimSuffix(key, "/transitions")
-			store.RLock()
-			iss, found := store.issues[key]
-			store.RUnlock()
-			if found {
-				_ = json.NewEncoder(w).Encode(issueDetail(iss))
-				return
-			}
-			http.NotFound(w, r)
-			return
-		}
-
-		// POST transition — persist it
-		key := extractIssueKey(path, "/transitions")
-		var body struct {
-			Transition struct {
-				ID string `json:"id"`
-			} `json:"transition"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, err.Error(), 400)
-			return
-		}
-		if toStatusID, ok := transitionMap[body.Transition.ID]; ok {
-			store.Lock()
-			if iss, ok := store.issues[key]; ok {
-				iss.StatusID = toStatusID
-				iss.StatusName = statusMap[toStatusID]
-			}
-			store.Unlock()
-		}
-		w.WriteHeader(http.StatusNoContent)
-	})
+	mux.HandleFunc("/rest/agile/1.0/board/", handleBoard)
+	mux.HandleFunc("/rest/api/3/search/jql", handleSearchJQL)
+	mux.HandleFunc("/rest/api/3/user/assignable/search", handleAssignableSearch)
+	mux.HandleFunc("/rest/api/3/myself", handleMyself)
+	mux.HandleFunc("/rest/api/3/project/", handleProject)
+	mux.HandleFunc("/rest/api/3/issue", handleCreateIssue)
+	mux.HandleFunc("/rest/api/3/issue/", handleIssue)
 
 	addr := ":9191"
 	if p := os.Getenv("PORT"); p != "" {
@@ -274,6 +122,176 @@ func main() {
 	})
 	srv := &http.Server{Addr: addr, Handler: logHandler, ReadHeaderTimeout: 5 * time.Second}
 	log.Fatal(srv.ListenAndServe())
+}
+
+func handleBoard(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if strings.Contains(r.URL.Path, "/configuration") {
+		_ = json.NewEncoder(w).Encode(boardConfig())
+		return
+	}
+	_ = json.NewEncoder(w).Encode(boardIssues())
+}
+
+func handleSearchJQL(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method == http.MethodGet {
+		jql := r.URL.Query().Get("jql")
+		if strings.Contains(jql, "type = Epic") || strings.Contains(strings.ToLower(jql), "type = epic") {
+			query := strings.ToLower(r.URL.Query().Get("query"))
+			_ = json.NewEncoder(w).Encode(epicSearchResults(query))
+			return
+		}
+	}
+	_ = json.NewEncoder(w).Encode(searchResults())
+}
+
+func handleAssignableSearch(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	query := strings.ToLower(r.URL.Query().Get("query"))
+	store.RLock()
+	defer store.RUnlock()
+	_ = json.NewEncoder(w).Encode(filterAssignees(query))
+}
+
+func handleMyself(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"accountId":    "current-user",
+		"displayName":  "Demo User",
+		"emailAddress": "demo@example.com",
+		"active":       true,
+	})
+}
+
+func handleProject(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(projectDetail())
+}
+
+func handleCreateIssue(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	var body struct {
+		Fields struct {
+			Parent    map[string]string `json:"parent"`
+			Project   map[string]string `json:"project"`
+			IssueType map[string]string `json:"issuetype"`
+			Summary   string            `json:"summary"`
+		} `json:"fields"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	store.Lock()
+	store.nextID++
+	id := store.nextID
+	key := fmt.Sprintf("ENG-%d", id)
+	isSubtask := body.Fields.Parent != nil && body.Fields.Parent["key"] != ""
+	statusID := "2"
+	statusName := "To Do"
+	if isSubtask {
+		parentKey := body.Fields.Parent["key"]
+		if parent, ok := store.issues[parentKey]; ok {
+			statusID = parent.StatusID
+			statusName = parent.StatusName
+		}
+	}
+	store.issues[key] = &issueStatus{
+		Key:        key,
+		Summary:    body.Fields.Summary,
+		StatusID:   statusID,
+		StatusName: statusName,
+	}
+	store.Unlock()
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"id":   strconv.Itoa(id),
+		"key":  key,
+		"self":  "http://localhost:9191/rest/api/3/issue/" + key,
+	})
+}
+
+func handleIssue(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	path := r.URL.Path
+
+	if r.Method == http.MethodPut && strings.HasSuffix(path, "/assignee") {
+		handleAssign(w, r, path)
+		return
+	}
+
+	if r.Method == http.MethodGet && strings.HasSuffix(path, "/transitions") {
+		_ = json.NewEncoder(w).Encode(transitions())
+		return
+	}
+
+	if r.Method == http.MethodGet {
+		handleIssueGet(w, r, path)
+		return
+	}
+
+	handleTransition(w, r, path)
+}
+
+func handleAssign(w http.ResponseWriter, r *http.Request, path string) {
+	key := extractIssueKey(path, "/assignee")
+	var body struct {
+		AccountID string `json:"accountId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	store.Lock()
+	if iss, ok := store.issues[key]; ok {
+		iss.Assignee = assigneeName(body.AccountID)
+		store.assignees[key] = body.AccountID
+	}
+	store.Unlock()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func handleIssueGet(w http.ResponseWriter, r *http.Request, path string) {
+	key, ok := strings.CutPrefix(path, "/rest/api/3/issue/")
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	key = strings.TrimSuffix(key, "/transitions")
+	store.RLock()
+	iss, found := store.issues[key]
+	store.RUnlock()
+	if found {
+		_ = json.NewEncoder(w).Encode(issueDetail(iss))
+		return
+	}
+	http.NotFound(w, r)
+}
+
+func handleTransition(w http.ResponseWriter, r *http.Request, path string) {
+	key := extractIssueKey(path, "/transitions")
+	var body struct {
+		Transition struct {
+			ID string `json:"id"`
+		} `json:"transition"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if toStatusID, ok := transitionMap[body.Transition.ID]; ok {
+		store.Lock()
+		if iss, ok := store.issues[key]; ok {
+			iss.StatusID = toStatusID
+			iss.StatusName = statusMap[toStatusID]
+		}
+		store.Unlock()
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func extractIssueKey(path, suffix string) string {

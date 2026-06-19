@@ -437,35 +437,12 @@ func handleDetailInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		ctx.state.detail = nil
 		return nil
 	case tcell.KeyRune:
-		if event.Rune() == 'q' {
-			ctx.state.detail = nil
-			return nil
-		}
-		if event.Rune() == 'a' {
-			openAssigneePicker(ctx)
-			return nil
-		}
-		if event.Rune() == 'c' && ctx.state.projectKey != "" {
-			openCreateSubtask(ctx, d.card.Key)
-			return nil
-		}
+		return handleDetailRune(ctx, d, event)
 	case tcell.KeyUp:
-		if hasSubtasks && d.selectedSubtask > 0 {
-			d.selectedSubtask--
-			return nil
-		}
-		if d.scroll > 0 {
-			d.scroll--
-		}
+		handleDetailUp(d, hasSubtasks)
 		return nil
 	case tcell.KeyDown:
-		if hasSubtasks && d.selectedSubtask < len(d.card.Subtasks)-1 {
-			d.selectedSubtask++
-			return nil
-		}
-		if d.scroll < d.maxScroll {
-			d.scroll++
-		}
+		handleDetailDown(d, hasSubtasks)
 		return nil
 	case tcell.KeyEnter:
 		if hasSubtasks && d.selectedSubtask < len(d.card.Subtasks) {
@@ -490,6 +467,43 @@ func handleDetailInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 	return nil
+}
+
+func handleDetailRune(ctx *appContext, d *detailState, event *tcell.EventKey) *tcell.EventKey {
+	switch event.Rune() {
+	case 'q':
+		ctx.state.detail = nil
+		return nil
+	case 'a':
+		openAssigneePicker(ctx)
+		return nil
+	case 'c':
+		if ctx.state.projectKey != "" {
+			openCreateSubtask(ctx, d.card.Key)
+		}
+		return nil
+	}
+	return nil
+}
+
+func handleDetailUp(d *detailState, hasSubtasks bool) {
+	if hasSubtasks && d.selectedSubtask > 0 {
+		d.selectedSubtask--
+		return
+	}
+	if d.scroll > 0 {
+		d.scroll--
+	}
+}
+
+func handleDetailDown(d *detailState, hasSubtasks bool) {
+	if hasSubtasks && d.selectedSubtask < len(d.card.Subtasks)-1 {
+		d.selectedSubtask++
+		return
+	}
+	if d.scroll < d.maxScroll {
+		d.scroll++
+	}
 }
 
 func handleSubDetailInput(ctx *appContext, d *detailState, event *tcell.EventKey) *tcell.EventKey {
@@ -792,141 +806,19 @@ func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.Event
 		c.clampCur()
 		return nil
 	case tcell.KeyUp:
-		if c.field == cfButtons {
-			if c.isSubtask() {
-				c.field = cfDescription
-			} else {
-				c.field = cfEpic
-			}
-			c.clampCur()
-			return nil
-		}
-		if c.field == cfEpic && c.epicKey == "" {
-			if c.epicSel > 0 {
-				c.epicSel--
-			} else {
-				c.field = cfDescription
-				c.clampCur()
-			}
-		} else if c.field == cfDescription {
-			lines := descLines(c.desc, descWrapW)
-			curLine := c.descCurLine(lines)
-			if curLine > 0 {
-				// Move cursor to previous line
-				c.descMoveUp(lines)
-				c.descAutoScroll(descWrapW)
-			} else if c.descScroll > 0 {
-				c.descScroll--
-			} else {
-				c.field = cfSummary
-				c.clampCur()
-			}
-		} else {
-			c.prevField()
-			c.clampCur()
-		}
+		handleCreateUp(c)
 		return nil
 	case tcell.KeyDown:
-		if c.field == cfButtons {
-			c.field = cfType
-			c.clampCur()
-			return nil
-		}
-		if c.field == cfEpic && c.epicKey == "" {
-			items := c.filteredEpics()
-			if c.epicSel < len(items)-1 {
-				c.epicSel++
-			} else {
-				c.field = cfButtons
-				c.clampCur()
-			}
-		} else if c.field == cfDescription {
-			lines := descLines(c.desc, descWrapW)
-			curLine := c.descCurLine(lines)
-			if curLine < len(lines)-1 {
-				c.descMoveDown(lines)
-				c.descAutoScroll(descWrapW)
-			} else if c.descScroll < max(0, len(lines)-descVisH) {
-				c.descScroll++
-			} else {
-				c.nextField()
-				c.clampCur()
-			}
-		} else {
-			c.nextField()
-			c.clampCur()
-		}
+		handleCreateDown(c)
 		return nil
 	case tcell.KeyLeft:
-		if c.field == cfButtons {
-			c.btnIdx = 0
-			return nil
-		}
-		if c.field == cfType {
-			c.cycleType(-1)
-			return nil
-		}
-		switch c.field {
-		case cfSummary:
-			if c.sumCur > 0 {
-				c.sumCur--
-			}
-		case cfEpic:
-			if c.epicCur > 0 {
-				c.epicCur--
-			}
-		case cfDescription:
-			if c.descCur > 0 {
-				c.descCur--
-				c.descAutoScroll(descWrapW)
-			}
-		}
+		handleCreateLeft(c)
 		return nil
 	case tcell.KeyRight:
-		if c.field == cfButtons {
-			c.btnIdx = 1
-			return nil
-		}
-		if c.field == cfType {
-			c.cycleType(1)
-			return nil
-		}
-		switch c.field {
-		case cfSummary:
-			if c.sumCur < len([]rune(c.summary)) {
-				c.sumCur++
-			}
-		case cfEpic:
-			if c.epicCur < len([]rune(c.epicQuery)) {
-				c.epicCur++
-			}
-		case cfDescription:
-			if c.descCur < len([]rune(c.desc)) {
-				c.descCur++
-				c.descAutoScroll(descWrapW)
-			}
-		}
+		handleCreateRight(c)
 		return nil
 	case tcell.KeyEnter:
-		if c.field == cfButtons {
-			if c.btnIdx == 0 {
-				executeCreateIssue(ctx)
-			} else {
-				c.stopDebounce()
-				ctx.state.createIssue = nil
-			}
-			return nil
-		}
-		if c.field == cfEpic {
-			c.handleEnter()
-			return nil
-		}
-		if c.field == cfDescription {
-			c.handleNewline()
-			return nil
-		}
-		executeCreateIssue(ctx)
-		return nil
+		return handleCreateEnter(ctx, c)
 	case tcell.KeyCtrlU:
 		if c.field == cfEpic {
 			c.epicKey = ""
@@ -934,30 +826,13 @@ func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.Event
 			c.epicQuery = ""
 			c.epicCur = 0
 			c.epicSel = 0
-			return nil
 		}
 		return nil
 	case tcell.KeyHome:
-		switch c.field {
-		case cfSummary:
-			c.sumCur = 0
-		case cfDescription:
-			c.descCur = 0
-			c.descAutoScroll(descWrapW)
-		case cfEpic:
-			c.epicCur = 0
-		}
+		handleCreateHome(c)
 		return nil
 	case tcell.KeyEnd:
-		switch c.field {
-		case cfSummary:
-			c.sumCur = len([]rune(c.summary))
-		case cfDescription:
-			c.descCur = len([]rune(c.desc))
-			c.descAutoScroll(descWrapW)
-		case cfEpic:
-			c.epicCur = len([]rune(c.epicQuery))
-		}
+		handleCreateEnd(c)
 		return nil
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
 		c.backspace()
@@ -976,6 +851,171 @@ func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.Event
 		return nil
 	}
 	return nil
+}
+
+func handleCreateUp(c *createIssueState) {
+	if c.field == cfButtons {
+		if c.isSubtask() {
+			c.field = cfDescription
+		} else {
+			c.field = cfEpic
+		}
+		c.clampCur()
+		return
+	}
+	if c.field == cfEpic && c.epicKey == "" {
+		if c.epicSel > 0 {
+			c.epicSel--
+		} else {
+			c.field = cfDescription
+			c.clampCur()
+		}
+	} else if c.field == cfDescription {
+		lines := descLines(c.desc)
+		curLine := c.descCurLine(lines)
+		if curLine > 0 {
+			c.descMoveUp(lines)
+			c.descAutoScroll()
+		} else if c.descScroll > 0 {
+			c.descScroll--
+		} else {
+			c.field = cfSummary
+			c.clampCur()
+		}
+	} else {
+		c.prevField()
+		c.clampCur()
+	}
+}
+
+func handleCreateDown(c *createIssueState) {
+	if c.field == cfButtons {
+		c.field = cfType
+		c.clampCur()
+		return
+	}
+	if c.field == cfEpic && c.epicKey == "" {
+		items := c.filteredEpics()
+		if c.epicSel < len(items)-1 {
+			c.epicSel++
+		} else {
+			c.field = cfButtons
+			c.clampCur()
+		}
+	} else if c.field == cfDescription {
+		lines := descLines(c.desc)
+		curLine := c.descCurLine(lines)
+		if curLine < len(lines)-1 {
+			c.descMoveDown(lines)
+			c.descAutoScroll()
+		} else if c.descScroll < max(0, len(lines)-descVisH) {
+			c.descScroll++
+		} else {
+			c.nextField()
+			c.clampCur()
+		}
+	} else {
+		c.nextField()
+		c.clampCur()
+	}
+}
+
+func handleCreateLeft(c *createIssueState) {
+	if c.field == cfButtons {
+		c.btnIdx = 0
+		return
+	}
+	if c.field == cfType {
+		c.cycleType(-1)
+		return
+	}
+	switch c.field {
+	case cfSummary:
+		if c.sumCur > 0 {
+			c.sumCur--
+		}
+	case cfEpic:
+		if c.epicCur > 0 {
+			c.epicCur--
+		}
+	case cfDescription:
+		if c.descCur > 0 {
+			c.descCur--
+			c.descAutoScroll()
+		}
+	}
+}
+
+func handleCreateRight(c *createIssueState) {
+	if c.field == cfButtons {
+		c.btnIdx = 1
+		return
+	}
+	if c.field == cfType {
+		c.cycleType(1)
+		return
+	}
+	switch c.field {
+	case cfSummary:
+		if c.sumCur < len([]rune(c.summary)) {
+			c.sumCur++
+		}
+	case cfEpic:
+		if c.epicCur < len([]rune(c.epicQuery)) {
+			c.epicCur++
+		}
+	case cfDescription:
+		if c.descCur < len([]rune(c.desc)) {
+			c.descCur++
+			c.descAutoScroll()
+		}
+	}
+}
+
+func handleCreateEnter(ctx *appContext, c *createIssueState) *tcell.EventKey {
+	if c.field == cfButtons {
+		if c.btnIdx == 0 {
+			executeCreateIssue(ctx)
+		} else {
+			c.stopDebounce()
+			ctx.state.createIssue = nil
+		}
+		return nil
+	}
+	if c.field == cfEpic {
+		c.handleEnter()
+		return nil
+	}
+	if c.field == cfDescription {
+		c.handleNewline()
+		return nil
+	}
+	executeCreateIssue(ctx)
+	return nil
+}
+
+func handleCreateHome(c *createIssueState) {
+	switch c.field {
+	case cfSummary:
+		c.sumCur = 0
+	case cfDescription:
+		c.descCur = 0
+		c.descAutoScroll()
+	case cfEpic:
+		c.epicCur = 0
+	}
+}
+
+func handleCreateEnd(c *createIssueState) {
+	switch c.field {
+	case cfSummary:
+		c.sumCur = len([]rune(c.summary))
+	case cfDescription:
+		c.descCur = len([]rune(c.desc))
+		c.descAutoScroll()
+	case cfEpic:
+		c.epicCur = len([]rune(c.epicQuery))
+	}
 }
 
 func startEpicSearch(ctx *appContext, c *createIssueState) {

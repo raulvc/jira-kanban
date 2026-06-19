@@ -216,66 +216,92 @@ func adfToPlain(doc *adfDoc) string {
 func renderADFNode(b *strings.Builder, node adfNode) {
 	switch node.Type {
 	case "paragraph":
-		for _, child := range node.Content {
-			renderADFNode(b, child)
-		}
+		renderADFChildren(b, node.Content)
 	case "bulletList", "orderedList":
-		for i, child := range node.Content {
-			if i > 0 {
-				b.WriteByte('\n')
-			}
-			renderADFNode(b, child)
-		}
+		renderADFListItems(b, node.Content)
 	case "listItem":
-		b.WriteString("• ")
-		for i, child := range node.Content {
-			if i > 0 {
-				b.WriteByte('\n')
-			}
-			renderADFNode(b, child)
-		}
+		renderADFListItem(b, node.Content)
 	case "heading":
-		prefix := strings.Repeat("#", node.Attrs.Level) + " "
-		b.WriteString(prefix)
-		for _, child := range node.Content {
-			renderADFNode(b, child)
-		}
-		b.WriteByte('\n')
+		renderADFHeading(b, node)
 	case "text", "inlineCard":
-		b.WriteString(node.Text)
-		for _, m := range node.Marks {
-			if m.Type == "link" {
-				if href := m.Attrs["href"]; href != "" && href != node.Text {
-					b.WriteString(" (")
-					b.WriteString(href)
-					b.WriteByte(')')
-				}
-			}
-		}
+		renderADFText(b, node)
 	case "hardBreak":
 		b.WriteByte('\n')
 	case "codeBlock":
-		lang := node.Attrs.Language
-		if lang != "" {
-			b.WriteString("```")
-			b.WriteString(lang)
-			b.WriteByte('\n')
-		} else {
-			b.WriteString("```\n")
-		}
-		for _, child := range node.Content {
-			renderADFNode(b, child)
-		}
-		b.WriteString("\n```")
+		renderADFCodeBlock(b, node)
 	case "blockCard", "mediaGroup", "media", "rule":
-		for _, child := range node.Content {
-			renderADFNode(b, child)
+		renderADFBlockChildren(b, node.Content)
+	default:
+		renderADFChildren(b, node.Content)
+	}
+}
+
+func renderADFChildren(b *strings.Builder, children []adfNode) {
+	for _, child := range children {
+		renderADFNode(b, child)
+	}
+}
+
+func renderADFListItems(b *strings.Builder, items []adfNode) {
+	for i, child := range items {
+		if i > 0 {
 			b.WriteByte('\n')
 		}
-	default:
-		for _, child := range node.Content {
-			renderADFNode(b, child)
+		renderADFNode(b, child)
+	}
+}
+
+func renderADFListItem(b *strings.Builder, children []adfNode) {
+	b.WriteString("• ")
+	for i, child := range children {
+		if i > 0 {
+			b.WriteByte('\n')
 		}
+		renderADFNode(b, child)
+	}
+}
+
+func renderADFHeading(b *strings.Builder, node adfNode) {
+	prefix := strings.Repeat("#", node.Attrs.Level) + " "
+	b.WriteString(prefix)
+	for _, child := range node.Content {
+		renderADFNode(b, child)
+	}
+	b.WriteByte('\n')
+}
+
+func renderADFText(b *strings.Builder, node adfNode) {
+	b.WriteString(node.Text)
+	for _, m := range node.Marks {
+		if m.Type == "link" {
+			if href := m.Attrs["href"]; href != "" && href != node.Text {
+				b.WriteString(" (")
+				b.WriteString(href)
+				b.WriteByte(')')
+			}
+		}
+	}
+}
+
+func renderADFCodeBlock(b *strings.Builder, node adfNode) {
+	lang := node.Attrs.Language
+	if lang != "" {
+		b.WriteString("```")
+		b.WriteString(lang)
+		b.WriteByte('\n')
+	} else {
+		b.WriteString("```\n")
+	}
+	for _, child := range node.Content {
+		renderADFNode(b, child)
+	}
+	b.WriteString("\n```")
+}
+
+func renderADFBlockChildren(b *strings.Builder, children []adfNode) {
+	for _, child := range children {
+		renderADFNode(b, child)
+		b.WriteByte('\n')
 	}
 }
 
@@ -326,12 +352,7 @@ func appendRichNode(segs []DescSeg, node adfNode) []DescSeg {
 			segs = appendRichNode(segs, child)
 		}
 	case "heading":
-		prefix := strings.Repeat("#", node.Attrs.Level) + " "
-		segs = append(segs, DescSeg{Text: prefix, Style: DsHeading})
-		for _, child := range node.Content {
-			segs = append(segs, DescSeg{Text: child.Text, Style: DsHeading})
-		}
-		segs = append(segs, DescSeg{Text: "\n"})
+		segs = appendRichHeading(segs, node)
 	case "bulletList", "orderedList":
 		for i, child := range node.Content {
 			if i > 0 {
@@ -348,33 +369,11 @@ func appendRichNode(segs []DescSeg, node adfNode) []DescSeg {
 			segs = appendRichNode(segs, child)
 		}
 	case "text", "inlineCard":
-		style := DsText
-		for _, m := range node.Marks {
-			if m.Type == "link" {
-				style = DsLink
-			}
-		}
-		segs = append(segs, DescSeg{Text: node.Text, Style: style})
-		for _, m := range node.Marks {
-			if m.Type == "link" {
-				if href := m.Attrs["href"]; href != "" && href != node.Text {
-					segs = append(segs, DescSeg{Text: " (" + href + ")", Style: DsLink})
-				}
-			}
-		}
+		segs = appendRichText(segs, node)
 	case "hardBreak":
 		segs = append(segs, DescSeg{Text: "\n"})
 	case "codeBlock":
-		lang := node.Attrs.Language
-		prefix := "```\n"
-		if lang != "" {
-			prefix = "```" + lang + "\n"
-		}
-		segs = append(segs, DescSeg{Text: prefix, Style: DsCode})
-		for _, child := range node.Content {
-			segs = append(segs, DescSeg{Text: child.Text, Style: DsCode})
-		}
-		segs = append(segs, DescSeg{Text: "\n```", Style: DsCode})
+		segs = appendRichCodeBlock(segs, node)
 	case "blockCard", "mediaGroup", "media", "rule":
 		for _, child := range node.Content {
 			segs = appendRichNode(segs, child)
@@ -385,6 +384,47 @@ func appendRichNode(segs []DescSeg, node adfNode) []DescSeg {
 			segs = appendRichNode(segs, child)
 		}
 	}
+	return segs
+}
+
+func appendRichHeading(segs []DescSeg, node adfNode) []DescSeg {
+	prefix := strings.Repeat("#", node.Attrs.Level) + " "
+	segs = append(segs, DescSeg{Text: prefix, Style: DsHeading})
+	for _, child := range node.Content {
+		segs = append(segs, DescSeg{Text: child.Text, Style: DsHeading})
+	}
+	segs = append(segs, DescSeg{Text: "\n"})
+	return segs
+}
+
+func appendRichText(segs []DescSeg, node adfNode) []DescSeg {
+	style := DsText
+	for _, m := range node.Marks {
+		if m.Type == "link" {
+			style = DsLink
+		}
+	}
+	segs = append(segs, DescSeg{Text: node.Text, Style: style})
+	for _, m := range node.Marks {
+		if m.Type == "link" {
+			if href := m.Attrs["href"]; href != "" && href != node.Text {
+				segs = append(segs, DescSeg{Text: " (" + href + ")", Style: DsLink})
+			}
+		}
+	}
+	return segs
+}
+
+func appendRichCodeBlock(segs []DescSeg, node adfNode) []DescSeg {
+	prefix := "```\n"
+	if lang := node.Attrs.Language; lang != "" {
+		prefix = "```" + lang + "\n"
+	}
+	segs = append(segs, DescSeg{Text: prefix, Style: DsCode})
+	for _, child := range node.Content {
+		segs = append(segs, DescSeg{Text: child.Text, Style: DsCode})
+	}
+	segs = append(segs, DescSeg{Text: "\n```", Style: DsCode})
 	return segs
 }
 

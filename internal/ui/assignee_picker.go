@@ -32,7 +32,7 @@ func newAssigneePickerState(issueKey, currentAssignee string, boardData jira.Boa
 		}
 	}
 
-	var users []jira.AssignableUser
+	users := make([]jira.AssignableUser, 0, len(boardNames))
 	for name := range boardNames {
 		users = append(users, jira.AssignableUser{DisplayName: name})
 	}
