@@ -31,10 +31,13 @@ type boardState struct {
 	detail         *detailState
 	assigneePicker *assigneePickerState
 	createIssue    *createIssueState
+	history        *historyState
 	memberFilter   string
 	epicFilterVal  string
 	currentUser    string
+	accountID      string
 	projectKey     string
+	pendingSelect  string // key to select after next board reload
 }
 
 func newBoardState(data jira.Board) *boardState {
@@ -197,6 +200,8 @@ func (s *boardState) reload(data jira.Board) {
 	s.syncPhase = ""
 	s.syncFetched = 0
 	s.syncTotal = 0
+	s.selectCardByKey(s.pendingSelect)
+	s.pendingSelect = ""
 }
 
 // filteredData returns a copy of the board data with only cards matching
@@ -240,6 +245,24 @@ func (s *boardState) clampSelection() {
 		}
 		if s.cardIdx[i] < 0 {
 			s.cardIdx[i] = 0
+		}
+	}
+}
+
+// selectCardByKey finds the card with the given key in the filtered board
+// and sets the column/card selection to point at it. No-op if not found.
+func (s *boardState) selectCardByKey(key string) {
+	if key == "" {
+		return
+	}
+	fd := s.filteredData()
+	for ci, col := range fd.Columns {
+		for i, card := range col.Issues {
+			if card.Key == key {
+				s.colIdx = ci
+				s.cardIdx[ci] = i
+				return
+			}
 		}
 	}
 }
@@ -297,6 +320,9 @@ func drawBoard(screen tcell.Screen, s *boardState, boardID, x, y, width, height 
 	}
 	if s.createIssue != nil {
 		drawCreateIssue(screen, s.createIssue, width, height, s.currentUser)
+	}
+	if s.history != nil {
+		drawHistoryModal(screen, s.history, width, height)
 	}
 }
 
@@ -370,7 +396,7 @@ func drawHelpBar(screen tcell.Screen, x, y, width int) {
 	style := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
 	fillRow(screen, x, y, width, style)
 	drawText(screen, x, y,
-		" ←/→ cols • ↑/↓ cards • f filter • e epic • a assign • c create • t transition • o browser • r refresh • q quit",
+		" ←/→ cols • ↑/↓ cards • f filter • e epic • a assign • c create • h history • t transition • o browser • r refresh • q quit",
 		style, width)
 }
 

@@ -39,6 +39,7 @@ func Run(client *jira.Client, boardID int, data jira.Board, baseURL string, need
 		if me, err := client.GetCurrentUser(); err == nil && me.DisplayName != "" {
 			ctx.app.QueueUpdateDraw(func() {
 				state.currentUser = me.DisplayName
+				state.accountID = me.AccountID
 			})
 		}
 	}()
@@ -61,6 +62,9 @@ func Run(client *jira.Client, boardID int, data jira.Board, baseURL string, need
 		}
 		if state.createIssue != nil {
 			return handleCreateIssueInput(ctx, event)
+		}
+		if state.history != nil {
+			return handleHistoryInput(ctx, event)
 		}
 		if state.detail != nil {
 			return handleDetailInput(ctx, event)
@@ -198,6 +202,11 @@ func handleBoardRune(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 	case 'c':
 		if ctx.state.createIssue == nil && ctx.state.projectKey != "" {
 			openCreateIssue(ctx)
+		}
+		return nil
+	case 'h':
+		if ctx.state.history == nil {
+			openHistory(ctx)
 		}
 		return nil
 	}
@@ -783,6 +792,15 @@ func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.Event
 		c.clampCur()
 		return nil
 	case tcell.KeyUp:
+		if c.field == cfButtons {
+			if c.isSubtask() {
+				c.field = cfDescription
+			} else {
+				c.field = cfEpic
+			}
+			c.clampCur()
+			return nil
+		}
 		if c.field == cfEpic && c.epicKey == "" {
 			if c.epicSel > 0 {
 				c.epicSel--
@@ -809,12 +827,17 @@ func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.Event
 		}
 		return nil
 	case tcell.KeyDown:
+		if c.field == cfButtons {
+			c.field = cfType
+			c.clampCur()
+			return nil
+		}
 		if c.field == cfEpic && c.epicKey == "" {
 			items := c.filteredEpics()
 			if c.epicSel < len(items)-1 {
 				c.epicSel++
 			} else {
-				c.nextField()
+				c.field = cfButtons
 				c.clampCur()
 			}
 		} else if c.field == cfDescription {
@@ -835,6 +858,10 @@ func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.Event
 		}
 		return nil
 	case tcell.KeyLeft:
+		if c.field == cfButtons {
+			c.btnIdx = 0
+			return nil
+		}
 		if c.field == cfType {
 			c.cycleType(-1)
 			return nil
@@ -856,6 +883,10 @@ func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.Event
 		}
 		return nil
 	case tcell.KeyRight:
+		if c.field == cfButtons {
+			c.btnIdx = 1
+			return nil
+		}
 		if c.field == cfType {
 			c.cycleType(1)
 			return nil
@@ -877,6 +908,15 @@ func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.Event
 		}
 		return nil
 	case tcell.KeyEnter:
+		if c.field == cfButtons {
+			if c.btnIdx == 0 {
+				executeCreateIssue(ctx)
+			} else {
+				c.stopDebounce()
+				ctx.state.createIssue = nil
+			}
+			return nil
+		}
 		if c.field == cfEpic {
 			c.handleEnter()
 			return nil
@@ -926,9 +966,7 @@ func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.Event
 		c.deleteForward()
 		return nil
 	case tcell.KeyRune:
-		if event.Rune() == 'q' && (c.field == cfType || (c.field == cfEpic && c.epicKey != "")) {
-			c.stopDebounce()
-			ctx.state.createIssue = nil
+		if c.field == cfButtons {
 			return nil
 		}
 		c.typeRune(event.Rune())
@@ -945,15 +983,14 @@ func startEpicSearch(ctx *appContext, c *createIssueState) {
 		c.debounce.Stop()
 	}
 
-	if c.epicLoaded && len(c.filteredEpics()) > 0 {
+	if c.epicLoaded {
 		return
 	}
 
-	query := c.epicQuery
 	projectKey := c.projectKey
 	epicFreq := c.epicFreq
 	c.debounce = time.AfterFunc(150*time.Millisecond, func() {
-		epics, err := ctx.client.SearchEpics(projectKey, query)
+		epics, err := ctx.client.SearchEpics(projectKey, "")
 		ctx.app.QueueUpdateDraw(func() {
 			if ctx.state.createIssue != c {
 				return
@@ -1008,7 +1045,124 @@ func executeCreateIssue(ctx *appContext) {
 			}
 			ctx.state.createIssue = nil
 			ctx.state.statusMsg = fmt.Sprintf(" Created %s", result.Key)
+			key := result.Key
+			ctx.state.pendingSelect = key
+			ctx.state.detail = &detailState{
+				card: jira.Card{
+					Key:     key,
+					Summary: summary,
+				},
+				loading: true,
+			}
+			go func() {
+				full, err := ctx.client.GetIssue(key)
+				ctx.app.QueueUpdateDraw(func() {
+					d := ctx.state.detail
+					if d == nil || d.card.Key != key {
+						return
+					}
+					if err != nil {
+						d.loading = false
+						d.err = err.Error()
+						return
+					}
+					d.card = full
+					d.loading = false
+				})
+			}()
 			startSync(ctx)
 		})
 	}()
+}
+
+// ── history ────────────────────────────────────────────────────────────────
+
+func openHistory(ctx *appContext) {
+	h := &historyState{loading: true}
+	ctx.state.history = h
+
+	go func() {
+		items, err := ctx.client.SearchRecentActivity(ctx.state.accountID, historyDays)
+		ctx.app.QueueUpdateDraw(func() {
+			if ctx.state.history != h {
+				return
+			}
+			h.loading = false
+			if err != nil {
+				h.err = err.Error()
+				return
+			}
+			h.items = items
+		})
+	}()
+}
+
+func handleHistoryInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
+	h := ctx.state.history
+	switch event.Key() {
+	case tcell.KeyEscape:
+		ctx.state.history = nil
+		return nil
+	case tcell.KeyRune:
+		if event.Rune() == 'q' {
+			ctx.state.history = nil
+			return nil
+		}
+	case tcell.KeyUp:
+		if h.selected > 0 {
+			h.selected--
+		}
+		return nil
+	case tcell.KeyDown:
+		if h.selected < len(h.items)-1 {
+			h.selected++
+		}
+		return nil
+	case tcell.KeyPgUp:
+		h.selected = max(0, h.selected-10)
+		return nil
+	case tcell.KeyPgDn:
+		h.selected = min(len(h.items)-1, h.selected+10)
+		return nil
+	case tcell.KeyHome:
+		h.selected = 0
+		return nil
+	case tcell.KeyEnd:
+		h.selected = max(0, len(h.items)-1)
+		return nil
+	case tcell.KeyEnter:
+		if h.selected >= 0 && h.selected < len(h.items) {
+			key := h.items[h.selected].Key
+			summary := h.items[h.selected].Summary
+			ctx.state.history = nil
+			ctx.state.detail = &detailState{
+				card: jira.Card{
+					Key:     key,
+					Summary: summary,
+				},
+				loading: true,
+			}
+			go func() {
+				full, err := ctx.client.GetIssue(key)
+				ctx.app.QueueUpdateDraw(func() {
+					d := ctx.state.detail
+					if d == nil || d.card.Key != key {
+						return
+					}
+					if err != nil {
+						d.loading = false
+						d.err = err.Error()
+						return
+					}
+					d.card = full
+					d.loading = false
+				})
+			}()
+		}
+		return nil
+	case tcell.KeyCtrlC:
+		ctx.app.Stop()
+		return nil
+	}
+	return nil
 }

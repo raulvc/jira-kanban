@@ -18,7 +18,8 @@ const (
 	cfSummary
 	cfDescription
 	cfEpic
-	cfFieldCount
+	cfButtons    // virtual field: OK / Cancel buttons
+	cfFieldCount // total navigable positions (not a field itself)
 )
 
 // createIssueState tracks the create-issue form modal.
@@ -39,6 +40,7 @@ type createIssueState struct {
 	epics      []jira.EpicItem
 	epicSel    int
 	field      createField
+	btnIdx     int // 0 = OK, 1 = Cancel
 	errMsg     string
 	creating   bool
 	debounce   *time.Timer
@@ -76,19 +78,29 @@ func newCreateIssueState(projectKey string) *createIssueState {
 
 func (c *createIssueState) isSubtask() bool { return c.parentKey != "" }
 
-func (c *createIssueState) fieldCount() createField {
-	if c.isSubtask() {
-		return cfDescription + 1
-	}
-	return cfFieldCount
+// navCount returns the total number of navigable positions (fields + buttons).
+func (c *createIssueState) navCount() createField {
+	return cfButtons + 1
 }
 
 func (c *createIssueState) nextField() {
-	c.field = (c.field + 1) % c.fieldCount()
+	for {
+		c.field = (c.field + 1) % c.navCount()
+		if !c.isSubtask() || c.field != cfEpic {
+			break
+		}
+	}
+	c.clampCur()
 }
 
 func (c *createIssueState) prevField() {
-	c.field = (c.field - 1 + c.fieldCount()) % c.fieldCount()
+	for {
+		c.field = (c.field - 1 + c.navCount()) % c.navCount()
+		if !c.isSubtask() || c.field != cfEpic {
+			break
+		}
+	}
+	c.clampCur()
 }
 
 func (c *createIssueState) currentTypeName() string {
@@ -130,6 +142,8 @@ func (c *createIssueState) clampCur() {
 		if c.epicSel >= len(items) {
 			c.epicSel = max(0, len(items)-1)
 		}
+	case cfButtons:
+		c.btnIdx = clamp(c.btnIdx, 0, 1)
 	}
 }
 
@@ -209,7 +223,7 @@ func (c *createIssueState) handleEnter() {
 		if c.epicSel >= 0 && c.epicSel < len(items) {
 			c.epicKey = items[c.epicSel].Key
 			c.epicName = items[c.epicSel].Summary
-			c.field = cfSummary
+			c.field = cfEpic
 			c.clampCur()
 		}
 	}
@@ -667,11 +681,18 @@ func drawCreateIssue(screen tcell.Screen, c *createIssueState, screenW, screenH 
 	fillRow(screen, ox+1, btnY, boxW-2, bgStyle)
 	createStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(colGreen).Bold(true)
 	cancelStyle := tcell.StyleDefault.Foreground(colFg).Background(colMuted)
-	createText := " Create (Enter) "
-	cancelText := " Cancel (Esc) "
+	createText := " Create "
+	cancelText := " Cancel "
 	gap := 3
 	totalBtnW := len([]rune(createText)) + gap + len([]rune(cancelText))
 	btnX := ox + (boxW-totalBtnW)/2
+	if c.field == cfButtons {
+		if c.btnIdx == 0 {
+			createStyle = tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(colCyan).Bold(true)
+		} else {
+			cancelStyle = tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(colCyan).Bold(true)
+		}
+	}
 	drawText(screen, btnX, btnY, createText, createStyle, contentW)
 	btnX += len([]rune(createText)) + gap
 	drawText(screen, btnX, btnY, cancelText, cancelStyle, contentW)
