@@ -7,24 +7,28 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-
 	"github.com/raulvc/jira-kanban/internal/jira"
 )
 
 // appContext bundles the dependencies needed by input handlers.
 type appContext struct {
-	app         *tview.Application
-	state       *boardState
-	client      *jira.Client
-	boardID     int
-	baseURL     string
-	syncTicker  *time.Ticker
+	app        *tview.Application
+	state      *boardState
+	client     *jira.Client
+	boardID    int
+	baseURL    string
+	syncTicker *time.Ticker
 }
 
 // Run starts the interactive TUI for the given board data.
 // When needsSync is true the board was loaded from cache and a
 // background refresh is triggered immediately after the first render.
 func Run(client *jira.Client, boardID int, data jira.Board, baseURL string, needsSync bool) error {
+	if err := loadThemePrefs(); err != nil {
+		// Non-fatal: just use the default theme.
+		_ = err
+	}
+
 	app := tview.NewApplication()
 	state := newBoardState(data)
 	ctx := &appContext{
@@ -44,7 +48,7 @@ func Run(client *jira.Client, boardID int, data jira.Board, baseURL string, need
 		}
 	}()
 
-	box := tview.NewBox().SetBackgroundColor(colBg)
+	box := tview.NewBox().SetBackgroundColor(T().Bg)
 	box.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
 		drawBoard(screen, state, boardID, x, y, width, height)
 		return x, y, width, height
@@ -208,6 +212,11 @@ func handleBoardRune(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		if ctx.state.history == nil {
 			openHistory(ctx)
 		}
+		return nil
+	case '+':
+		name := cycleTheme()
+		ctx.state.statusMsg = fmt.Sprintf(" Theme: %s", name)
+		saveThemePrefs()
 		return nil
 	}
 	return event

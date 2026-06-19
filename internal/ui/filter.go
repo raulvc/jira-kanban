@@ -116,14 +116,14 @@ func drawFilterModal(screen tcell.Screen, f *filterState, screenW, screenH int, 
 	ox := (screenW - boxW) / 2
 	oy := (screenH - boxH) / 2
 
-	bgStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
-	borderStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
-	titleStyle := tcell.StyleDefault.Foreground(colBlue).Background(colPanel).Bold(true)
-	searchStyle := tcell.StyleDefault.Foreground(colFg).Background(colBg)
-	searchPlaceholder := tcell.StyleDefault.Foreground(colMuted).Background(colBg)
-	itemStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
-	selStyle := tcell.StyleDefault.Foreground(colFg).Background(colCardSel).Bold(true)
-	meStyle := tcell.StyleDefault.Foreground(colGold).Background(colPanel).Bold(true)
+	bgStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel)
+	borderStyle := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
+	titleStyle := tcell.StyleDefault.Foreground(T().Blue).Background(T().Panel).Bold(true)
+	searchStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().Bg)
+	searchPlaceholder := tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg)
+	itemStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel)
+	selStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().CardSel).Bold(true)
+	meStyle := tcell.StyleDefault.Foreground(T().Gold).Background(T().Panel).Bold(true)
 
 	for row := oy; row < oy+boxH; row++ {
 		fillRow(screen, ox, row, boxW, bgStyle)
@@ -179,8 +179,8 @@ func drawFilterModal(screen tcell.Screen, f *filterState, screenW, screenH int, 
 
 	btnY := oy + boxH - 2
 	fillRow(screen, ox+1, btnY, boxW-2, bgStyle)
-	allStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(colOrange).Bold(true)
-	cancelStyle := tcell.StyleDefault.Foreground(colFg).Background(colMuted)
+	allStyle := tcell.StyleDefault.Foreground(T().BadgeFg).Background(T().Orange).Bold(true)
+	cancelStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().Muted)
 	allText := " All (Esc) "
 	clearText := " Clear "
 	gap := 2
@@ -274,13 +274,13 @@ func drawEpicFilterModal(screen tcell.Screen, f *epicFilterState, screenW, scree
 	ox := (screenW - boxW) / 2
 	oy := (screenH - boxH) / 2
 
-	bgStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
-	borderStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
-	titleStyle := tcell.StyleDefault.Foreground(colBlue).Background(colPanel).Bold(true)
-	searchStyle := tcell.StyleDefault.Foreground(colFg).Background(colBg)
-	searchPlaceholder := tcell.StyleDefault.Foreground(colMuted).Background(colBg)
-	itemStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
-	selStyle := tcell.StyleDefault.Foreground(colFg).Background(colCardSel).Bold(true)
+	bgStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel)
+	borderStyle := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
+	titleStyle := tcell.StyleDefault.Foreground(T().Blue).Background(T().Panel).Bold(true)
+	searchStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().Bg)
+	searchPlaceholder := tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg)
+	itemStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel)
+	selStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().CardSel).Bold(true)
 
 	for row := oy; row < oy+boxH; row++ {
 		fillRow(screen, ox, row, boxW, bgStyle)
@@ -319,7 +319,7 @@ func drawEpicFilterModal(screen tcell.Screen, f *epicFilterState, screenW, scree
 		}
 		fillRow(screen, ox+1, cy, boxW-2, style)
 		epBadge := " " + truncStr(items[i], contentW-5) + " "
-		epStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(epicColor(items[i])).Bold(true)
+		epStyle := tcell.StyleDefault.Foreground(T().BadgeFg).Background(epicColor(items[i])).Bold(true)
 		drawText(screen, ox+padding, cy, prefix, style, contentW)
 		drawText(screen, ox+padding+2, cy, epBadge, epStyle, contentW-2)
 		cy++
@@ -331,8 +331,8 @@ func drawEpicFilterModal(screen tcell.Screen, f *epicFilterState, screenW, scree
 
 	btnY := oy + boxH - 2
 	fillRow(screen, ox+1, btnY, boxW-2, bgStyle)
-	allStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(colOrange).Bold(true)
-	cancelStyle := tcell.StyleDefault.Foreground(colFg).Background(colMuted)
+	allStyle := tcell.StyleDefault.Foreground(T().BadgeFg).Background(T().Orange).Bold(true)
+	cancelStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().Muted)
 	allText := " All (Esc) "
 	clearText := " Clear "
 	gap := 2

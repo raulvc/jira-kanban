@@ -79,7 +79,7 @@ func TestEpicColor(t *testing.T) {
 		t.Fatal("same epic name should return same color")
 	}
 	c3 := epicColor("")
-	if c3 != colMuted {
+	if c3 != T().Muted {
 		t.Fatal("empty epic should return muted color")
 	}
 }

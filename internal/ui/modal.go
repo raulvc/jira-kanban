@@ -93,16 +93,16 @@ func drawModal(screen tcell.Screen, m *modalState, screenW, screenH int) {
 	oy := (screenH - boxH) / 2
 
 	// Styles
-	bgStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
-	borderStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
-	titleStyle := tcell.StyleDefault.Foreground(colBlue).Background(colPanel).Bold(true)
-	searchStyle := tcell.StyleDefault.Foreground(colFg).Background(colBg)
-	searchPlaceholder := tcell.StyleDefault.Foreground(colMuted).Background(colBg)
-	itemStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
-	selStyle := tcell.StyleDefault.Foreground(colFg).Background(colCardSel).Bold(true)
-	btnOKStyle := tcell.StyleDefault.Foreground(colBg).Background(colGreen).Bold(true)
-	btnCancelStyle := tcell.StyleDefault.Foreground(colFg).Background(colMuted)
-	errStyle := tcell.StyleDefault.Foreground(colRed).Background(colPanel).Bold(true)
+	bgStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel)
+	borderStyle := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
+	titleStyle := tcell.StyleDefault.Foreground(T().Blue).Background(T().Panel).Bold(true)
+	searchStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().Bg)
+	searchPlaceholder := tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg)
+	itemStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel)
+	selStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().CardSel).Bold(true)
+	btnOKStyle := tcell.StyleDefault.Foreground(T().Bg).Background(T().Green).Bold(true)
+	btnCancelStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().Muted)
+	errStyle := tcell.StyleDefault.Foreground(T().Red).Background(T().Panel).Bold(true)
 
 	// Fill background
 	for row := oy; row < oy+boxH; row++ {

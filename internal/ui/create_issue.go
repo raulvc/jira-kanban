@@ -54,13 +54,13 @@ var typeOrder = map[string]int{"Task": 0, "Bug": 1, "Epic": 2}
 func typeStyle(name string) (icon string, bg tcell.Color) {
 	switch name {
 	case "Task":
-		return "\u25B8", colCyan // ▸
+		return "\u25B8", T().Cyan // ▸
 	case "Bug":
-		return "\u25CF", colRed // ●
+		return "\u25CF", T().Red // ●
 	case "Epic":
-		return "\u2696", colViolet // ⚖
+		return "\u2696", T().Violet // ⚖
 	default:
-		return "\u25CB", colBlue // ○
+		return "\u25CB", T().Blue // ○
 	}
 }
 
@@ -460,17 +460,17 @@ func drawCreateIssue(screen tcell.Screen, c *createIssueState, screenW, screenH 
 	oy := (screenH - boxH) / 2
 	lay := createLayout{ox, oy, boxW, boxH, contentW}
 
-	bgStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
-	borderStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
-	titleStyle := tcell.StyleDefault.Foreground(colBlue).Background(colPanel).Bold(true)
-	labelStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
-	inputStyle := tcell.StyleDefault.Foreground(colFg).Background(colBg)
-	inputPlaceholder := tcell.StyleDefault.Foreground(colMuted).Background(colBg)
-	activeLabelStyle := tcell.StyleDefault.Foreground(colCyan).Background(colPanel).Bold(true)
-	activeInputStyle := tcell.StyleDefault.Foreground(colFg).Background(colCardSel)
-	activeBorder := tcell.StyleDefault.Foreground(colCyan).Background(colBg)
-	errStyle := tcell.StyleDefault.Foreground(colRed).Background(colPanel).Bold(true)
-	sepStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel).Dim(true)
+	bgStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel)
+	borderStyle := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
+	titleStyle := tcell.StyleDefault.Foreground(T().Blue).Background(T().Panel).Bold(true)
+	labelStyle := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
+	inputStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().Bg)
+	inputPlaceholder := tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg)
+	activeLabelStyle := tcell.StyleDefault.Foreground(T().Cyan).Background(T().Panel).Bold(true)
+	activeInputStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().CardSel)
+	activeBorder := tcell.StyleDefault.Foreground(T().Cyan).Background(T().Bg)
+	errStyle := tcell.StyleDefault.Foreground(T().Red).Background(T().Panel).Bold(true)
+	sepStyle := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel).Dim(true)
 
 	for row := oy; row < oy+boxH; row++ {
 		fillRow(screen, ox, row, boxW, bgStyle)
@@ -508,19 +508,19 @@ func drawCreateTypeSection(screen tcell.Screen, c *createIssueState, lay createL
 	drawText(screen, lay.ox+2, cy, " Type", lStyle, lay.contentW)
 	cy++
 	icon, typeBg := typeStyle(c.currentTypeName())
-	bStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(typeBg).Bold(true)
+	bStyle := tcell.StyleDefault.Foreground(T().BadgeFg).Background(typeBg).Bold(true)
 	badge := " " + icon + " " + c.currentTypeName() + " "
-	badgeRowBg := tcell.StyleDefault.Foreground(colFg).Background(colBg)
-	badgeRowBorderSt := tcell.StyleDefault.Foreground(colMuted).Background(colBg)
+	badgeRowBg := tcell.StyleDefault.Foreground(T().Fg).Background(T().Bg)
+	badgeRowBorderSt := tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg)
 	if c.field == cfType {
-		badgeRowBg = tcell.StyleDefault.Foreground(colFg).Background(colCardSel)
+		badgeRowBg = tcell.StyleDefault.Foreground(T().Fg).Background(T().CardSel)
 		badgeRowBorderSt = activeBorder
 	}
 	screen.SetContent(lay.ox+2, cy, '│', nil, badgeRowBorderSt)
 	fillRow(screen, lay.ox+3, cy, lay.contentW-2, badgeRowBg)
 	drawText(screen, lay.ox+3, cy, badge, bStyle, lay.contentW-2)
 	if c.field == cfType {
-		drawText(screen, lay.ox+3+len([]rune(badge))+1, cy, "\u2190/\u2192", tcell.StyleDefault.Foreground(colMuted).Background(colCardSel), lay.contentW-2)
+		drawText(screen, lay.ox+3+len([]rune(badge))+1, cy, "\u2190/\u2192", tcell.StyleDefault.Foreground(T().Muted).Background(T().CardSel), lay.contentW-2)
 		screen.SetContent(lay.ox+2+lay.contentW-1, cy, '│', nil, badgeRowBorderSt)
 	}
 	cy++
@@ -554,7 +554,7 @@ func drawCreateDescSection(screen tcell.Screen, c *createIssueState, lay createL
 	descBoxY := cy
 	descBoxH := descVisH
 	for row := 0; row < descBoxH; row++ {
-		screen.SetContent(lay.ox+2, cy, '│', nil, tcell.StyleDefault.Foreground(colMuted).Background(colBg))
+		screen.SetContent(lay.ox+2, cy, '│', nil, tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg))
 		fillRow(screen, lay.ox+3, cy, lay.contentW-1, inputStyle)
 		cy++
 	}
@@ -566,7 +566,7 @@ func drawCreateDescSection(screen tcell.Screen, c *createIssueState, lay createL
 	for i := 0; i < descBoxH; i++ {
 		lineIdx := c.descScroll + i
 		row := descBoxY + i
-		screen.SetContent(lay.ox+2, row, '│', nil, tcell.StyleDefault.Foreground(colMuted).Background(colBg))
+		screen.SetContent(lay.ox+2, row, '│', nil, tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg))
 		fillRow(screen, lay.ox+3, row, lay.contentW-1, inputStyle)
 		if c.field == cfDescription {
 			screen.SetContent(lay.ox+2, row, '│', nil, activeBorder)
@@ -596,7 +596,7 @@ func drawCreateDescSection(screen tcell.Screen, c *createIssueState, lay createL
 }
 
 func drawDescCursor(screen tcell.Screen, c *createIssueState, lay createLayout, descBoxY, descBoxH int, lines []string, activeInputStyle tcell.Style) {
-	cursorSt := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(colCyan).Bold(true)
+	cursorSt := tcell.StyleDefault.Foreground(T().BadgeFg).Background(T().Cyan).Bold(true)
 	curLine := c.descCurLine(lines)
 	offsets := descLineOffsets(c.desc, lines)
 	curCol := c.descCur - offsets[curLine]
@@ -624,7 +624,7 @@ func drawDescScrollbar(screen tcell.Screen, lay createLayout, descBoxY, descBoxH
 	barH := max(1, descBoxH*descBoxH/len(lines))
 	barTop := descBoxY + c.descScroll*(descBoxH-barH)/totalScroll
 	for i := 0; i < barH && barTop+i < descBoxY+descBoxH; i++ {
-		screen.SetContent(lay.ox+2+lay.contentW-1, barTop+i, '▐', nil, tcell.StyleDefault.Foreground(colMuted).Background(colBg))
+		screen.SetContent(lay.ox+2+lay.contentW-1, barTop+i, '▐', nil, tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg))
 	}
 }
 
@@ -652,10 +652,10 @@ func drawCreateEpicSection(screen tcell.Screen, c *createIssueState, lay createL
 		items := c.filteredEpics()
 		epicBtnY := lay.oy + lay.boxH - 2
 		for i := range items {
-			style := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
+			style := tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel)
 			prefix := "  "
 			if i == c.epicSel {
-				style = tcell.StyleDefault.Foreground(colFg).Background(colCardSel).Bold(true)
+				style = tcell.StyleDefault.Foreground(T().Fg).Background(T().CardSel).Bold(true)
 				prefix = "▸ "
 			}
 			text := items[i].Key + "  " + truncStr(items[i].Summary, lay.contentW-10)
@@ -669,17 +669,17 @@ func drawCreateEpicSection(screen tcell.Screen, c *createIssueState, lay createL
 		}
 		if len(items) == 0 && c.epicQuery != "" {
 			if !c.epicLoaded {
-				drawText(screen, lay.ox+2, epicBtnY-2, "  Loading epics…", tcell.StyleDefault.Foreground(colCyan).Background(colPanel), lay.contentW)
+				drawText(screen, lay.ox+2, epicBtnY-2, "  Loading epics…", tcell.StyleDefault.Foreground(T().Cyan).Background(T().Panel), lay.contentW)
 			} else {
 				drawText(screen, lay.ox+2, epicBtnY-2, "  No epics found", inputPlaceholder, lay.contentW)
 			}
 		}
 	} else if c.epicKey != "" {
 		epicIcon, epicBg := typeStyle("Epic")
-		epicBadgeStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(epicBg).Bold(true)
+		epicBadgeStyle := tcell.StyleDefault.Foreground(T().BadgeFg).Background(epicBg).Bold(true)
 		badge := " " + epicIcon + " " + truncStr(c.epicKey+" "+c.epicName, lay.contentW-4) + " "
-		screen.SetContent(lay.ox+2, cy, '│', nil, tcell.StyleDefault.Foreground(colMuted).Background(colBg))
-		fillRow(screen, lay.ox+3, cy, lay.contentW-2, tcell.StyleDefault.Foreground(colFg).Background(colBg))
+		screen.SetContent(lay.ox+2, cy, '│', nil, tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg))
+		fillRow(screen, lay.ox+3, cy, lay.contentW-2, tcell.StyleDefault.Foreground(T().Fg).Background(T().Bg))
 		if c.field == cfEpic {
 			screen.SetContent(lay.ox+2, cy, '│', nil, activeBorder)
 			fillRow(screen, lay.ox+3, cy, lay.contentW-2, activeInputStyle)
@@ -687,11 +687,11 @@ func drawCreateEpicSection(screen tcell.Screen, c *createIssueState, lay createL
 		}
 		drawText(screen, lay.ox+3, cy, badge, epicBadgeStyle, lay.contentW-2)
 		if c.field == cfEpic {
-			drawText(screen, lay.ox+3+len([]rune(badge))+1, cy, "Ctrl+U clear", tcell.StyleDefault.Foreground(colMuted).Background(colCardSel), lay.contentW-2)
+			drawText(screen, lay.ox+3+len([]rune(badge))+1, cy, "Ctrl+U clear", tcell.StyleDefault.Foreground(T().Muted).Background(T().CardSel), lay.contentW-2)
 		}
 		cy++
 	} else {
-		fillRow(screen, lay.ox+2, cy, lay.contentW, tcell.StyleDefault.Foreground(colMuted).Background(colBg))
+		fillRow(screen, lay.ox+2, cy, lay.contentW, tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg))
 		drawText(screen, lay.ox+2, cy, "  None", inputPlaceholder, lay.contentW)
 		cy++
 	}
@@ -702,8 +702,8 @@ func drawCreateButtons(screen tcell.Screen, c *createIssueState, lay createLayou
 	btnY := lay.oy + lay.boxH - 2
 	drawSep(screen, lay.ox+2, btnY-1, lay.contentW, sepStyle)
 	fillRow(screen, lay.ox+1, btnY, lay.boxW-2, bgStyle)
-	createStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(colGreen).Bold(true)
-	cancelStyle := tcell.StyleDefault.Foreground(colFg).Background(colMuted)
+	createStyle := tcell.StyleDefault.Foreground(T().BadgeFg).Background(T().Green).Bold(true)
+	cancelStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().Muted)
 	createText := " Create "
 	cancelText := " Cancel "
 	gap := 3
@@ -711,9 +711,9 @@ func drawCreateButtons(screen tcell.Screen, c *createIssueState, lay createLayou
 	btnX := lay.ox + (lay.boxW-totalBtnW)/2
 	if c.field == cfButtons {
 		if c.btnIdx == 0 {
-			createStyle = tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(colCyan).Bold(true)
+			createStyle = tcell.StyleDefault.Foreground(T().BadgeFg).Background(T().Cyan).Bold(true)
 		} else {
-			cancelStyle = tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(colCyan).Bold(true)
+			cancelStyle = tcell.StyleDefault.Foreground(T().BadgeFg).Background(T().Cyan).Bold(true)
 		}
 	}
 	drawText(screen, btnX, btnY, createText, createStyle, lay.contentW)
@@ -722,10 +722,10 @@ func drawCreateButtons(screen tcell.Screen, c *createIssueState, lay createLayou
 
 	if c.creating {
 		for row := lay.oy; row < lay.oy+lay.boxH; row++ {
-			fillRow(screen, lay.ox, row, lay.boxW, tcell.StyleDefault.Foreground(colFg).Background(colPanel).Dim(true))
+			fillRow(screen, lay.ox, row, lay.boxW, tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel).Dim(true))
 		}
 		drawBorder(screen, lay.ox, lay.oy, lay.boxW, lay.boxH, borderStyle.Dim(true))
-		creatingStyle := tcell.StyleDefault.Foreground(colCyan).Background(colPanel).Bold(true)
+		creatingStyle := tcell.StyleDefault.Foreground(T().Cyan).Background(T().Panel).Bold(true)
 		drawText(screen, lay.ox+(lay.boxW-len([]rune(" Creating…")))/2, lay.oy+lay.boxH/2, " Creating…", creatingStyle, lay.boxW)
 	}
 }
@@ -736,7 +736,7 @@ func drawCreateButtons(screen tcell.Screen, c *createIssueState, lay createLayou
 // When cursor is at end, a ▏ bar is drawn.
 func drawInputField(screen tcell.Screen, x, y, w int, value, placeholder string, active bool, curPos int, style, activeStyle, placeholderStyle, activeBorder tcell.Style) {
 	borderCh := '│'
-	borderSt := tcell.StyleDefault.Foreground(colMuted).Background(colBg)
+	borderSt := tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg)
 	inputSt := style
 	if active {
 		borderSt = activeBorder
@@ -771,7 +771,7 @@ func drawInputField(screen tcell.Screen, x, y, w int, value, placeholder string,
 	if curPos < len(runes) {
 		// Cursor within text: highlight the character at cursor position
 		ch := runes[curPos]
-		cursorSt := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(colCyan).Bold(true)
+		cursorSt := tcell.StyleDefault.Foreground(T().BadgeFg).Background(T().Cyan).Bold(true)
 		screen.SetContent(x+1+cursorCol, y, ch, nil, cursorSt)
 	} else {
 		// Cursor at end of text: draw bar

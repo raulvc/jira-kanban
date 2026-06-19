@@ -172,15 +172,15 @@ func drawAssigneePicker(screen tcell.Screen, a *assigneePickerState, screenW, sc
 	ox := (screenW - boxW) / 2
 	oy := (screenH - boxH) / 2
 
-	bgStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
-	borderStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
-	titleStyle := tcell.StyleDefault.Foreground(colBlue).Background(colPanel).Bold(true)
-	searchStyle := tcell.StyleDefault.Foreground(colFg).Background(colBg)
-	searchPlaceholder := tcell.StyleDefault.Foreground(colMuted).Background(colBg)
-	itemStyle := tcell.StyleDefault.Foreground(colFg).Background(colPanel)
-	selStyle := tcell.StyleDefault.Foreground(colFg).Background(colCardSel).Bold(true)
-	meStyle := tcell.StyleDefault.Foreground(colGold).Background(colPanel).Bold(true)
-	errStyle := tcell.StyleDefault.Foreground(colRed).Background(colPanel).Bold(true)
+	bgStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel)
+	borderStyle := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
+	titleStyle := tcell.StyleDefault.Foreground(T().Blue).Background(T().Panel).Bold(true)
+	searchStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().Bg)
+	searchPlaceholder := tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg)
+	itemStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel)
+	selStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().CardSel).Bold(true)
+	meStyle := tcell.StyleDefault.Foreground(T().Gold).Background(T().Panel).Bold(true)
+	errStyle := tcell.StyleDefault.Foreground(T().Red).Background(T().Panel).Bold(true)
 
 	for row := oy; row < oy+boxH; row++ {
 		fillRow(screen, ox, row, boxW, bgStyle)
@@ -241,9 +241,9 @@ func drawAssigneePicker(screen tcell.Screen, a *assigneePickerState, screenW, sc
 
 	btnY := oy + boxH - 2
 	fillRow(screen, ox+1, btnY, boxW-2, bgStyle)
-	okStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(colGreen).Bold(true)
-	unassignStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(colOrange).Bold(true)
-	cancelStyle := tcell.StyleDefault.Foreground(colFg).Background(colMuted)
+	okStyle := tcell.StyleDefault.Foreground(T().BadgeFg).Background(T().Green).Bold(true)
+	unassignStyle := tcell.StyleDefault.Foreground(T().BadgeFg).Background(T().Orange).Bold(true)
+	cancelStyle := tcell.StyleDefault.Foreground(T().Fg).Background(T().Muted)
 	okText := " Enter "
 	unassignText := " Ctrl+U unassign "
 	cancelText := " Esc "

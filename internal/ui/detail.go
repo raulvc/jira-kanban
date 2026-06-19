@@ -59,14 +59,14 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 	l := detailLayout{
 		ox: ox, oy: oy, boxW: boxW, boxH: boxH,
 		contentW: contentW, padding: padding, maxCW: maxCW,
-		bgStyle:      tcell.StyleDefault.Foreground(colFg).Background(colPanel),
-		borderStyle:  tcell.StyleDefault.Foreground(colMuted).Background(colPanel),
-		titleStyle:   tcell.StyleDefault.Foreground(colBlue).Background(colPanel).Bold(true),
-		keyStyle:     tcell.StyleDefault.Foreground(colMuted).Background(colPanel),
-		valueStyle:   tcell.StyleDefault.Foreground(colFg).Background(colPanel),
-		descStyle:    tcell.StyleDefault.Foreground(colFg).Background(colPanel),
-		loadingStyle: tcell.StyleDefault.Foreground(colCyan).Background(colPanel),
-		errStyle:     tcell.StyleDefault.Foreground(colRed).Background(colPanel).Bold(true),
+		bgStyle:      tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel),
+		borderStyle:  tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel),
+		titleStyle:   tcell.StyleDefault.Foreground(T().Blue).Background(T().Panel).Bold(true),
+		keyStyle:     tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel),
+		valueStyle:   tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel),
+		descStyle:    tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel),
+		loadingStyle: tcell.StyleDefault.Foreground(T().Cyan).Background(T().Panel),
+		errStyle:     tcell.StyleDefault.Foreground(T().Red).Background(T().Panel).Bold(true),
 	}
 
 	for row := oy; row < oy+boxH; row++ {
@@ -76,7 +76,7 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 	drawBorder(screen, ox, oy, boxW, boxH, l.borderStyle)
 
 	closeY := oy + boxH - 2
-	closeStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
+	closeStyle := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
 	closeText := " Esc/q close • a assign • c subtask "
 	if d.isSubDetail {
 		closeText = " Esc/q back "
@@ -154,7 +154,7 @@ func drawDetailHeader(screen tcell.Screen, d *detailState, l *detailLayout, cy i
 	drawText(screen, l.ox+l.padding, cy, "Assignee: ", l.keyStyle, l.maxCW)
 	assigneeStyle := l.valueStyle
 	if d.card.Assignee != "" {
-		assigneeStyle = tcell.StyleDefault.Foreground(assigneeColor(d.card.Assignee)).Background(colPanel)
+		assigneeStyle = tcell.StyleDefault.Foreground(assigneeColor(d.card.Assignee)).Background(T().Panel)
 	}
 	drawText(screen, l.ox+l.padding+10, cy, assigneeText, assigneeStyle, l.maxCW-10)
 	cy++
@@ -162,7 +162,7 @@ func drawDetailHeader(screen tcell.Screen, d *detailState, l *detailLayout, cy i
 	if d.card.Epic != "" {
 		drawText(screen, l.ox+l.padding, cy, "Epic: ", l.keyStyle, l.maxCW)
 		epBadge := " " + truncStr(d.card.Epic, l.maxCW-8) + " "
-		epStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(epicColor(d.card.Epic)).Bold(true)
+		epStyle := tcell.StyleDefault.Foreground(T().BadgeFg).Background(epicColor(d.card.Epic)).Bold(true)
 		drawText(screen, l.ox+l.padding+6, cy, epBadge, epStyle, l.maxCW-6)
 		cy++
 	}
@@ -171,7 +171,7 @@ func drawDetailHeader(screen tcell.Screen, d *detailState, l *detailLayout, cy i
 		drawText(screen, l.ox+l.padding, cy, "Labels: ", l.keyStyle, l.maxCW)
 		lx := l.ox + l.padding + 8
 		for _, label := range d.card.Labels {
-			ls := tcell.StyleDefault.Foreground(labelColor(label)).Background(colPanel)
+			ls := tcell.StyleDefault.Foreground(labelColor(label)).Background(T().Panel)
 			text := " " + label + " "
 			drawn := drawText(screen, lx, cy, text, ls, l.maxCW-(lx-l.ox-l.padding))
 			lx += drawn + 1
@@ -193,9 +193,9 @@ func drawDetailSubtasks(screen tcell.Screen, d *detailState, l *detailLayout, cy
 	for i, st := range d.card.Subtasks {
 		sx := l.ox + l.padding
 
-		rowBg := colPanel
+		rowBg := T().Panel
 		if i == d.selectedSubtask {
-			rowBg = colCardSel
+			rowBg = T().CardSel
 		}
 		rowStyle := tcell.StyleDefault.Background(rowBg)
 
@@ -208,12 +208,12 @@ func drawDetailSubtasks(screen tcell.Screen, d *detailState, l *detailLayout, cy
 		drawText(screen, sx, cy, icon, iconStyle, 1)
 
 		sx += 2
-		keyStyle := tcell.StyleDefault.Foreground(colBlue).Background(rowBg)
+		keyStyle := tcell.StyleDefault.Foreground(T().Blue).Background(rowBg)
 		drawText(screen, sx, cy, st.Key, keyStyle, l.maxCW-2)
 
 		sx += len([]rune(st.Key)) + 1
 		avail := l.maxCW - (sx - l.ox - l.padding)
-		valStyle := tcell.StyleDefault.Foreground(colFg).Background(rowBg)
+		valStyle := tcell.StyleDefault.Foreground(T().Fg).Background(rowBg)
 		if avail > 0 {
 			drawText(screen, sx, cy, truncStr(st.Summary, avail), valStyle, avail)
 		}
@@ -236,13 +236,13 @@ func drawDetailSubtasks(screen tcell.Screen, d *detailState, l *detailLayout, cy
 func subtaskIcon(status string) (string, tcell.Color) {
 	switch status {
 	case "Done":
-		return "✓", colGreen
+		return "✓", T().Green
 	case "In Progress":
-		return "●", colYellow
+		return "●", T().Yellow
 	case "In Review":
-		return "◆", colCyan
+		return "◆", T().Cyan
 	default:
-		return "○", colMuted
+		return "○", T().Muted
 	}
 }
 
@@ -263,7 +263,7 @@ func drawDetailDescription(screen tcell.Screen, d *detailState, l *detailLayout,
 		return
 	}
 	if d.card.Description == "" {
-		drawText(screen, l.ox+l.padding, cy, "No description", tcell.StyleDefault.Foreground(colMuted).Background(colPanel), l.maxCW)
+		drawText(screen, l.ox+l.padding, cy, "No description", tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel), l.maxCW)
 		d.maxScroll = 0
 		return
 	}
@@ -285,8 +285,8 @@ func drawDetailDescription(screen tcell.Screen, d *detailState, l *detailLayout,
 	}
 	drawRichWrappedText(screen, segs, l.ox+l.padding, descAreaTop, descW, descAreaBot, d.scroll, l.descStyle)
 	if needsScrollbar {
-		trackStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
-		thumbStyle := tcell.StyleDefault.Foreground(colBlue).Background(colPanel)
+		trackStyle := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
+		thumbStyle := tcell.StyleDefault.Foreground(T().Blue).Background(T().Panel)
 		drawScrollbar(screen, l.ox+l.padding+descW+1, descAreaTop, descAreaH, d.scroll, totalDescLines, trackStyle, thumbStyle)
 	}
 }
@@ -354,13 +354,13 @@ func splitLines(text string) []string {
 func statusColor(status string) tcell.Style {
 	switch status {
 	case "Done", "Closed":
-		return tcell.StyleDefault.Foreground(colGreen).Background(colPanel).Bold(true)
+		return tcell.StyleDefault.Foreground(T().Green).Background(T().Panel).Bold(true)
 	case "In Progress", "In Review":
-		return tcell.StyleDefault.Foreground(colCyan).Background(colPanel).Bold(true)
+		return tcell.StyleDefault.Foreground(T().Cyan).Background(T().Panel).Bold(true)
 	case "To Do", "Open":
-		return tcell.StyleDefault.Foreground(colYellow).Background(colPanel).Bold(true)
+		return tcell.StyleDefault.Foreground(T().Yellow).Background(T().Panel).Bold(true)
 	default:
-		return tcell.StyleDefault.Foreground(colFg).Background(colPanel).Bold(true)
+		return tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel).Bold(true)
 	}
 }
 
@@ -478,9 +478,9 @@ func wrapStyledLine(chunks []styledChunk, width int) []styledLine {
 func descSegStyle(ds jira.DescStyle, base tcell.Style) tcell.Style {
 	switch ds {
 	case jira.DsLink:
-		return tcell.StyleDefault.Foreground(colCyan).Background(colPanel).Underline(true)
+		return tcell.StyleDefault.Foreground(T().Cyan).Background(T().Panel).Underline(true)
 	case jira.DsCode:
-		return tcell.StyleDefault.Foreground(colMuted).Background(colBg).Dim(true)
+		return tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg).Dim(true)
 	case jira.DsHeading:
 		return base.Bold(true)
 	default:

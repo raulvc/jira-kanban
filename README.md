@@ -64,6 +64,7 @@ jira-kanban --board 17   # flag form
 | `a` | Assign issue (from board or detail view) |
 | `c` | Create issue (from board) / Create subtask (from detail view) |
 | `h` | Recent activity history |
+| `+` | Cycle theme |
 | `r` | Refresh board |
 | `q` | Quit |
 
@@ -77,6 +78,21 @@ jira-kanban --board 17   # flag form
 - **Create issues & subtasks** — create new issues from the board view, and subtasks from the detail modal. Rich text descriptions with URL linking and code blocks are supported. Tab-navigable OK/Cancel buttons.
 - **Subtask navigation** — view and select subtasks inside the detail modal; press Enter to open a nested detail view for any subtask.
 - **Recent activity history** — press `h` to see your recently updated issues with changelog summaries (e.g. "status: To Do → In Progress · 2h ago").
+
+### Themes
+
+Four built-in color themes are available and can be cycled with `+`:
+
+- **Kanagawa Dark** (default)
+- **Kanagawa Light**
+- **Darcula**
+- **Darcula Light**
+
+The selected theme is saved to `~/.config/jira-kanban/config.yml` and restored on next launch.
+
+```yaml
+theme: "Kanagawa Light"
+```
 
 Cache is stored at `$XDG_CACHE_HOME/jira-kanban/<board-id>.json`.
 

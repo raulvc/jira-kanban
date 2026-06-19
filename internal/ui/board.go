@@ -299,6 +299,10 @@ func drawBoard(screen tcell.Screen, s *boardState, boardID, x, y, width, height 
 	if len(fd.Columns) == 0 || width < 5 || height < 3 {
 		return
 	}
+	bgFill := tcell.StyleDefault.Background(T().Bg)
+	for row := y; row < y+height; row++ {
+		fillRow(screen, x, row, width, bgFill)
+	}
 	drawStatusBar(screen, s, boardID, x, y, width)
 	drawHelpBar(screen, x, y+height-1, width)
 	drawColumns(screen, s, &fd, x, y+2, width, height-3)
@@ -327,13 +331,13 @@ func drawBoard(screen tcell.Screen, s *boardState, boardID, x, y, width, height 
 }
 
 func drawStatusBar(screen tcell.Screen, s *boardState, boardID, x, y, width int) {
-	style := tcell.StyleDefault.Foreground(colFg).Background(colPanel).Bold(true)
+	style := tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel).Bold(true)
 	fillRow(screen, x, y, width, style)
 
 	if s.syncing {
-		syncStyle := tcell.StyleDefault.Foreground(colCyan).Background(colPanel).Bold(true)
-		barStyle := tcell.StyleDefault.Foreground(colCyan).Background(colPanel)
-		trackStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
+		syncStyle := tcell.StyleDefault.Foreground(T().Cyan).Background(T().Panel).Bold(true)
+		barStyle := tcell.StyleDefault.Foreground(T().Cyan).Background(T().Panel)
+		trackStyle := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
 
 		frame := spinnerFrames[s.spinnerFrame%len(spinnerFrames)]
 
@@ -380,8 +384,8 @@ func drawStatusBar(screen tcell.Screen, s *boardState, boardID, x, y, width int)
 				ci = s.cardIdx[s.colIdx] + 1
 			}
 		}
-		text = fmt.Sprintf(" %s  board=%d  col %d/%d  card %d/%d",
-			fd.Name, boardID, s.colIdx+1, len(fd.Columns), ci, n)
+		text = fmt.Sprintf(" %s  board=%d  col %d/%d  card %d/%d  theme: %s",
+			fd.Name, boardID, s.colIdx+1, len(fd.Columns), ci, n, T().Name)
 		if s.memberFilter != "" {
 			text += fmt.Sprintf("  filter: %s", s.memberFilter)
 		}
@@ -393,10 +397,10 @@ func drawStatusBar(screen tcell.Screen, s *boardState, boardID, x, y, width int)
 }
 
 func drawHelpBar(screen tcell.Screen, x, y, width int) {
-	style := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
+	style := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
 	fillRow(screen, x, y, width, style)
 	drawText(screen, x, y,
-		" ←/→ cols • ↑/↓ cards • f filter • e epic • a assign • c create • h history • t transition • o browser • r refresh • q quit",
+		" ←/→ cols • ↑/↓ cards • f filter • e epic • a assign • c create • h history • t transition • o browser • r refresh • + theme • q quit",
 		style, width)
 }
 
@@ -424,7 +428,7 @@ func drawColumns(screen tcell.Screen, s *boardState, fd *jira.Board, x, y, width
 		drawColumnCards(screen, fd, s, ci, active, cx, y, thisW, height)
 
 		if vi < vc-1 {
-			sepStyle := tcell.StyleDefault.Foreground(colPanel).Background(colBg)
+			sepStyle := tcell.StyleDefault.Foreground(T().Panel).Background(T().Bg)
 			for row := y; row < y+height; row++ {
 				screen.SetContent(cx+thisW-1, row, '│', nil, sepStyle)
 			}
@@ -436,9 +440,9 @@ func drawColumns(screen tcell.Screen, s *boardState, fd *jira.Board, x, y, width
 func drawColumnHeader(screen tcell.Screen, col jira.Column, active bool, x, y, w int) {
 	var style tcell.Style
 	if active {
-		style = tcell.StyleDefault.Foreground(colBlue).Background(colCardSel).Bold(true)
+		style = tcell.StyleDefault.Foreground(T().Blue).Background(T().CardSel).Bold(true)
 	} else {
-		style = tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
+		style = tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
 	}
 	fillRow(screen, x, y, w, style)
 	name := truncStr(strings.ToUpper(col.Name), w-6)
@@ -449,7 +453,7 @@ func drawColumnCards(screen tcell.Screen, fd *jira.Board, s *boardState, ci int,
 	col := fd.Columns[ci]
 	if len(col.Issues) == 0 {
 		drawText(screen, x+1, y, "No issues",
-			tcell.StyleDefault.Foreground(colMuted).Background(colBg), w-2)
+			tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg), w-2)
 		return
 	}
 	curCard := min(s.cardIdx[ci], len(col.Issues)-1)
@@ -505,9 +509,9 @@ func ensureVisible(issues []jira.Card, idx, scroll, colW, viewH int) int {
 }
 
 func drawCard(screen tcell.Screen, card jira.Card, selected bool, x, drawY, w, clipTop, clipBot int) {
-	style := tcell.StyleDefault.Foreground(colFg).Background(colCardBg)
+	style := tcell.StyleDefault.Foreground(T().Fg).Background(T().CardBg)
 	if selected {
-		style = style.Background(colCardSel)
+		style = style.Background(T().CardSel)
 	}
 
 	ch := cardHeight(card, w)
@@ -548,7 +552,7 @@ func drawCardEpic(screen tcell.Screen, card jira.Card, x, lineY, w, clipTop, cli
 		return lineY
 	}
 	ec := epicColor(card.Epic)
-	epStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(ec).Bold(true)
+	epStyle := tcell.StyleDefault.Foreground(T().BadgeFg).Background(ec).Bold(true)
 	short := truncStr(card.Epic, w-4)
 	drawText(screen, x+1, lineY, " "+short+" ", epStyle, w-2)
 	return lineY + 1
@@ -567,7 +571,7 @@ func drawCardLabels(screen tcell.Screen, card jira.Card, x, lineY, w, clipTop, c
 			break
 		}
 		lc := labelColor(lbl)
-		ls := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(lc).Bold(true)
+		ls := tcell.StyleDefault.Foreground(T().BadgeFg).Background(lc).Bold(true)
 		short := truncStr(strings.ToUpper(lbl), 18)
 		txt := " " + short + " "
 		drawn := drawText(screen, lx, lineY, txt, ls, w-2-(lx-x))
@@ -580,8 +584,8 @@ func drawCardFooter(screen tcell.Screen, card jira.Card, style tcell.Style, x, l
 	if lineY < clipTop || lineY >= clipBot {
 		return
 	}
-	drawText(screen, x+1, lineY, "☐ ", style.Foreground(colCyan), 3)
-	kw := drawText(screen, x+3, lineY, card.Key, style.Foreground(colMuted), w-4)
+	drawText(screen, x+1, lineY, "☐ ", style.Foreground(T().Cyan), 3)
+	kw := drawText(screen, x+3, lineY, card.Key, style.Foreground(T().Muted), w-4)
 
 	assignee := card.Assignee
 	if assignee == "Unassigned" {

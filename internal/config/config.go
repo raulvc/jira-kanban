@@ -21,6 +21,7 @@ type Config struct {
 	Email   string `yaml:"email"`
 	Token   string `yaml:"api_token"` //nolint:gosec // field name, not a hardcoded secret
 	BoardID int    `yaml:"board_id"`
+	Theme   string `yaml:"theme"`
 }
 
 // Path returns the default configuration file location.

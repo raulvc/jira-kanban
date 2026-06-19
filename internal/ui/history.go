@@ -56,28 +56,28 @@ func drawHistoryModal(screen tcell.Screen, h *historyState, screenW, screenH int
 	l := historyLayout{
 		ox: ox, boxW: boxW, boxH: boxH,
 		contentW: contentW, padding: padding, maxVis: maxVis,
-		bgStyle:   tcell.StyleDefault.Foreground(colFg).Background(colPanel),
-		itemStyle: tcell.StyleDefault.Foreground(colFg).Background(colPanel),
-		selStyle:  tcell.StyleDefault.Foreground(colFg).Background(colCardSel).Bold(true),
-		sepStyle:  tcell.StyleDefault.Foreground(colMuted).Background(colPanel).Dim(true),
+		bgStyle:   tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel),
+		itemStyle: tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel),
+		selStyle:  tcell.StyleDefault.Foreground(T().Fg).Background(T().CardSel).Bold(true),
+		sepStyle:  tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel).Dim(true),
 	}
 
 	for row := oy; row < oy+boxH; row++ {
 		fillRow(screen, ox, row, boxW, l.bgStyle)
 	}
-	drawBorder(screen, ox, oy, boxW, boxH, tcell.StyleDefault.Foreground(colMuted).Background(colPanel))
+	drawBorder(screen, ox, oy, boxW, boxH, tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel))
 
 	cy := oy + 1
-	drawText(screen, ox+padding, cy, " Recent Activity ", tcell.StyleDefault.Foreground(colBlue).Background(colPanel).Bold(true), contentW)
+	drawText(screen, ox+padding, cy, " Recent Activity ", tcell.StyleDefault.Foreground(T().Blue).Background(T().Panel).Bold(true), contentW)
 	cy += 2
 	drawSep(screen, ox+padding, cy-1, contentW, l.sepStyle)
 
 	if h.loading {
-		drawText(screen, ox+padding, cy, "  Loading…", tcell.StyleDefault.Foreground(colCyan).Background(colPanel).Bold(true), contentW)
+		drawText(screen, ox+padding, cy, "  Loading…", tcell.StyleDefault.Foreground(T().Cyan).Background(T().Panel).Bold(true), contentW)
 	} else if h.err != "" {
-		drawText(screen, ox+padding, cy, " ✗ "+truncStr(h.err, contentW-3), tcell.StyleDefault.Foreground(colRed).Background(colPanel).Bold(true), contentW)
+		drawText(screen, ox+padding, cy, " ✗ "+truncStr(h.err, contentW-3), tcell.StyleDefault.Foreground(T().Red).Background(T().Panel).Bold(true), contentW)
 	} else if len(h.items) == 0 {
-		drawText(screen, ox+padding, cy, "  No recent activity", tcell.StyleDefault.Foreground(colMuted).Background(colPanel), contentW)
+		drawText(screen, ox+padding, cy, "  No recent activity", tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel), contentW)
 	} else {
 		drawHistoryItems(screen, h, &l, cy)
 		drawHistoryScrollbar(screen, h, &l, oy)
@@ -86,7 +86,7 @@ func drawHistoryModal(screen tcell.Screen, h *historyState, screenW, screenH int
 	hintY := oy + boxH - 2
 	drawSep(screen, ox+padding, hintY-1, contentW, l.sepStyle)
 	fillRow(screen, ox+1, hintY, boxW-2, l.bgStyle)
-	drawText(screen, ox+padding, hintY, " Esc/q close • Enter open • ↑/↓ scroll", tcell.StyleDefault.Foreground(colMuted).Background(colPanel), contentW)
+	drawText(screen, ox+padding, hintY, " Esc/q close • Enter open • ↑/↓ scroll", tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel), contentW)
 }
 
 func clampHistoryHeight(h int) int {
@@ -115,15 +115,15 @@ func drawHistoryItems(screen tcell.Screen, h *historyState, l *historyLayout, st
 		icon := statusIcon(it.Status)
 		iconStyle := statusColorHistory(it.Status)
 		if isSel {
-			iconStyle = iconStyle.Background(colCardSel).Bold(true)
+			iconStyle = iconStyle.Background(T().CardSel).Bold(true)
 		}
 
 		screen.SetContent(l.ox+l.padding, cy, ' ', nil, style)
 		drawText(screen, l.ox+l.padding+1, cy, icon+" ", iconStyle, 4)
 
-		keyStyle := tcell.StyleDefault.Foreground(colCyan).Background(colPanel)
+		keyStyle := tcell.StyleDefault.Foreground(T().Cyan).Background(T().Panel)
 		if isSel {
-			keyStyle = tcell.StyleDefault.Foreground(colCyan).Background(colCardSel).Bold(true)
+			keyStyle = tcell.StyleDefault.Foreground(T().Cyan).Background(T().CardSel).Bold(true)
 		}
 		drawText(screen, l.ox+l.padding+4, cy, it.Key, keyStyle, 12)
 
@@ -137,16 +137,16 @@ func drawHistoryItems(screen tcell.Screen, h *historyState, l *historyLayout, st
 		if it.Epic != "" {
 			epicCol := epicColor(it.Epic)
 			epicBadge := " " + truncStr(it.Epic, 8) + " "
-			epicBadgeStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(epicCol).Bold(true)
+			epicBadgeStyle := tcell.StyleDefault.Foreground(T().BadgeFg).Background(epicCol).Bold(true)
 			epicX := l.ox + l.padding + l.contentW - len([]rune(epicBadge)) - 1
 			drawText(screen, epicX, cy, epicBadge, epicBadgeStyle, len([]rune(epicBadge))+1)
 		}
 		cy++
 
 		fillRow(screen, l.ox+1, cy, l.boxW-2, style)
-		descStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
+		descStyle := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
 		if isSel {
-			descStyle = tcell.StyleDefault.Foreground(colMuted).Background(colCardSel)
+			descStyle = tcell.StyleDefault.Foreground(T().Muted).Background(T().CardSel)
 		}
 		desc := historyChangeDesc(it)
 		if desc != "" {
@@ -176,7 +176,7 @@ func drawHistoryScrollbar(screen tcell.Screen, h *historyState, l *historyLayout
 	totalScroll := max(1, len(h.items)-l.maxVis)
 	barH := max(1, l.maxVis*2*l.maxVis/len(h.items))
 	barTop := oy + 3 + h.scrollY*(l.maxVis*2-barH)/totalScroll
-	scrollStyle := tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
+	scrollStyle := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
 	for i := range l.maxVis * 2 {
 		if barTop+i >= oy+3 && barTop+i < oy+3+l.maxVis*2 {
 			screen.SetContent(l.ox+l.padding+l.contentW, oy+3+i, '▐', nil, scrollStyle)
@@ -202,13 +202,13 @@ func statusIcon(status string) string {
 func statusColorHistory(status string) tcell.Style {
 	switch status {
 	case "Done", "Closed":
-		return tcell.StyleDefault.Foreground(colGreen).Background(colPanel)
+		return tcell.StyleDefault.Foreground(T().Green).Background(T().Panel)
 	case "In Progress", "In Review":
-		return tcell.StyleDefault.Foreground(colBlue).Background(colPanel)
+		return tcell.StyleDefault.Foreground(T().Blue).Background(T().Panel)
 	case "To Do", "Open", "Backlog":
-		return tcell.StyleDefault.Foreground(colMuted).Background(colPanel)
+		return tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
 	default:
-		return tcell.StyleDefault.Foreground(colOrange).Background(colPanel)
+		return tcell.StyleDefault.Foreground(T().Orange).Background(T().Panel)
 	}
 }
 

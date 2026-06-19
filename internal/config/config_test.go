@@ -14,6 +14,7 @@ func TestSaveAndLoad(t *testing.T) {
 		Email:   "user@example.com",
 		Token:   "secret-token",
 		BoardID: 42,
+		Theme:   "Kanagawa Light",
 	}
 	if err := Save(path, cfg); err != nil {
 		t.Fatal(err)
@@ -34,6 +35,9 @@ func TestSaveAndLoad(t *testing.T) {
 	}
 	if loaded.BoardID != 42 {
 		t.Fatalf("BoardID: got %d, want 42", loaded.BoardID)
+	}
+	if loaded.Theme != "Kanagawa Light" {
+		t.Fatalf("Theme: got %q, want %q", loaded.Theme, "Kanagawa Light")
 	}
 }
 
