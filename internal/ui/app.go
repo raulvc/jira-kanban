@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 
@@ -216,6 +217,9 @@ func handleBoardRune(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		if ctx.state.history == nil {
 			openHistory(ctx)
 		}
+		return nil
+	case 'y':
+		copyKeyToClipboard(ctx)
 		return nil
 	case '+':
 		name := cycleTheme()
@@ -506,6 +510,9 @@ func handleDetailRune(ctx *appContext, d *detailState, event *tcell.EventKey) *t
 			openCreateSubtask(ctx, d.card.Key)
 		}
 		return nil
+	case 'y':
+		copyKeyToClipboard(ctx)
+		return nil
 	}
 	return nil
 }
@@ -601,6 +608,38 @@ func openIssueBrowser(ctx *appContext) {
 	issueURL := fmt.Sprintf("%s/browse/%s", ctx.baseURL, card.Key)
 	c := exec.Command("xdg-open", issueURL) //nolint:gosec // URL is constructed from config base URL + Jira key
 	_ = c.Start()
+}
+
+func copyKeyToClipboard(ctx *appContext) {
+	var card *jira.Card
+	if ctx.state.detail != nil {
+		card = &ctx.state.detail.card
+	} else {
+		card = ctx.state.selectedCard()
+	}
+	if card == nil {
+		return
+	}
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("pbcopy")
+	case "windows":
+		cmd = exec.Command("clip.exe")
+	default:
+		cmd = exec.Command("xclip", "-selection", "clipboard")
+	}
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return
+	}
+	if err := cmd.Start(); err != nil {
+		return
+	}
+	_, _ = fmt.Fprint(stdin, card.Key)
+	_ = stdin.Close()
+	_ = cmd.Wait()
+	ctx.state.statusMsg = fmt.Sprintf(" Copied %s", card.Key)
 }
 
 // ── assignee picker ────────────────────────────────────────────────────────
