@@ -98,7 +98,7 @@ func TestNewClient(t *testing.T) {
 	if c.BaseURL != "https://example.atlassian.net" {
 		t.Fatalf("trailing slash should be trimmed, got %q", c.BaseURL)
 	}
-	if c.Email != "a@b.com" || c.Token != "tok" {
+	if c.Email != "a@b.com" || c.APIToken != "tok" {
 		t.Fatal("credentials not set")
 	}
 	if c.HTTPClient == nil {

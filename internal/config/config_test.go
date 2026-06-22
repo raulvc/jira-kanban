@@ -12,7 +12,7 @@ func TestSaveAndLoad(t *testing.T) {
 	cfg := Config{
 		BaseURL: "https://example.atlassian.net",
 		Email:   "user@example.com",
-		Token:   "secret-token",
+		APIToken: "secret-token",
 		BoardID: 42,
 		Theme:   "Kanagawa Light",
 	}
@@ -30,7 +30,7 @@ func TestSaveAndLoad(t *testing.T) {
 	if loaded.Email != cfg.Email {
 		t.Fatalf("Email: got %q, want %q", loaded.Email, cfg.Email)
 	}
-	if loaded.Token != cfg.Token {
+	if loaded.APIToken != cfg.APIToken {
 		t.Fatalf("Token mismatch")
 	}
 	if loaded.BoardID != 42 {

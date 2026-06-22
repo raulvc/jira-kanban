@@ -606,7 +606,7 @@ func openIssueBrowser(ctx *appContext) {
 		return
 	}
 	issueURL := fmt.Sprintf("%s/browse/%s", ctx.baseURL, card.Key)
-	c := exec.Command("xdg-open", issueURL) //nolint:gosec // URL is constructed from config base URL + Jira key
+	c := exec.Command("xdg-open", issueURL)
 	_ = c.Start()
 }
 

@@ -49,13 +49,13 @@ func run() error {
 	parseBoardFlag(&cfg)
 
 	if err := config.Ensure(&cfg, func() error {
-		client := jira.NewClient(cfg.BaseURL, cfg.Email, cfg.Token)
+		client := jira.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
 		return client.Ping(cfg.BoardID)
 	}); err != nil {
 		return err
 	}
 
-	client := jira.NewClient(cfg.BaseURL, cfg.Email, cfg.Token)
+	client := jira.NewClient(cfg.BaseURL, cfg.Email, cfg.APIToken)
 
 	// Eagerly fetch account ID so sync can query recent activity.
 	if me, err := client.GetCurrentUser(); err == nil {

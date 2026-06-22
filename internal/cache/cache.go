@@ -50,22 +50,26 @@ func Load(boardID int) (Store, error) {
 	if err != nil {
 		return Store{}, err
 	}
-	data, err := os.ReadFile(p) //nolint:gosec // path derived from cache dir + board ID
+	data, err := os.ReadFile(filepath.Clean(p))
 	if os.IsNotExist(err) {
 		return Store{BoardID: boardID, Issues: map[string]Entry{}}, nil
 	}
 	if err != nil {
 		return Store{}, err
 	}
+	return unmarshalOrZero(data, boardID), nil
+}
+
+// unmarshalOrZero parses cache data, returning a zero Store on corrupt input.
+func unmarshalOrZero(data []byte, boardID int) Store {
 	var s Store
-	if err := json.Unmarshal(data, &s); err != nil {
-		// Corrupt cache — treat as cold start.
-		return Store{BoardID: boardID, Issues: map[string]Entry{}}, nil //nolint:nilerr // intentional: corrupt cache is not fatal
+	if json.Unmarshal(data, &s) != nil {
+		return Store{BoardID: boardID, Issues: map[string]Entry{}}
 	}
 	if s.Issues == nil {
 		s.Issues = map[string]Entry{}
 	}
-	return s, nil
+	return s
 }
 
 // Save writes the cache to disk.

@@ -19,7 +19,7 @@ import (
 type Config struct {
 	BaseURL string `yaml:"base_url"`
 	Email   string `yaml:"email"`
-	Token   string `yaml:"api_token"` //nolint:gosec // field name, not a hardcoded secret
+	APIToken string `yaml:"api_token"`
 	BoardID int    `yaml:"board_id"`
 	Theme   string `yaml:"theme"`
 }
@@ -36,7 +36,7 @@ func Path() (string, error) {
 // Load reads and unmarshals the YAML configuration at path.
 func Load(path string) (Config, error) {
 	var cfg Config
-	data, err := os.ReadFile(path) //nolint:gosec // path is always derived from user home
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return cfg, err
 	}
@@ -49,7 +49,7 @@ func Save(path string, cfg Config) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return err
 	}
-	data, err := yaml.Marshal(&cfg) //nolint:gosec // Token is the field name, not a literal
+	data, err := yaml.Marshal(&cfg)
 	if err != nil {
 		return err
 	}
@@ -112,12 +112,12 @@ func promptFields(cfg *Config) (bool, error) {
 		changed = true
 	}
 
-	if strings.TrimSpace(cfg.Token) == "" {
+	if strings.TrimSpace(cfg.APIToken) == "" {
 		v, err := prompt(reader, "Jira API token (https://id.atlassian.com/manage-profile/security/api-tokens)", "", true)
 		if err != nil {
 			return false, err
 		}
-		cfg.Token = v
+		cfg.APIToken = v
 		changed = true
 	}
 
@@ -170,7 +170,7 @@ func promptValidated(reader *bufio.Reader, label, suggestion string, secret bool
 
 		var value string
 		if secret {
-			raw, err := term.ReadPassword(int(os.Stdin.Fd())) //nolint:gosec // fd conversion is safe on all targets
+			raw, err := term.ReadPassword(int(os.Stdin.Fd()))
 			fmt.Fprintln(os.Stderr)
 			if err != nil {
 				return "", err

@@ -65,7 +65,7 @@ var themes = []Theme{
 		Aqua: tcell.NewRGBColor(60, 130, 140), BadgeFg: tcell.NewRGBColor(255, 255, 255),
 	},
 	{
-		Name: "Darcula", //nolint:misspell // JetBrains theme name
+		Name: "Darcula",
 		Bg: tcell.NewRGBColor(43, 43, 43), Fg: tcell.NewRGBColor(169, 183, 198),
 		Muted: tcell.NewRGBColor(128, 128, 128), Blue: tcell.NewRGBColor(104, 151, 187),
 		Cyan: tcell.NewRGBColor(74, 158, 142), Green: tcell.NewRGBColor(106, 135, 89),
@@ -79,7 +79,7 @@ var themes = []Theme{
 		Aqua: tcell.NewRGBColor(91, 168, 176), BadgeFg: tcell.ColorBlack,
 	},
 	{
-		Name: "Darcula Light", //nolint:misspell // JetBrains theme name
+		Name: "Darcula Light",
 		Bg: tcell.NewRGBColor(251, 251, 251), Fg: tcell.NewRGBColor(51, 51, 51),
 		Muted: tcell.NewRGBColor(128, 128, 128), Blue: tcell.NewRGBColor(0, 51, 176),
 		Cyan: tcell.NewRGBColor(0, 110, 123), Green: tcell.NewRGBColor(6, 125, 23),

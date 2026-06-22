@@ -16,7 +16,7 @@ import (
 type Client struct {
 	BaseURL     string
 	Email       string
-	Token       string
+	APIToken    string
 	AccountID   string // set eagerly so sync can query recent activity
 	HTTPClient  *http.Client
 	RankFieldID int
@@ -27,7 +27,7 @@ func NewClient(baseURL, email, token string) *Client {
 	return &Client{
 		BaseURL:    strings.TrimRight(baseURL, "/"),
 		Email:      email,
-		Token:      token,
+		APIToken:   token,
 		HTTPClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
@@ -52,7 +52,7 @@ func (c *Client) postJSONRaw(rawURL string, body any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	auth := base64.StdEncoding.EncodeToString([]byte(c.Email + ":" + c.Token))
+	auth := base64.StdEncoding.EncodeToString([]byte(c.Email + ":" + c.APIToken))
 	req.Header.Set("Authorization", "Basic "+auth)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -84,7 +84,7 @@ func (c *Client) Ping(boardID int) error {
 	if err != nil {
 		return err
 	}
-	auth := base64.StdEncoding.EncodeToString([]byte(c.Email + ":" + c.Token))
+	auth := base64.StdEncoding.EncodeToString([]byte(c.Email + ":" + c.APIToken))
 	req.Header.Set("Authorization", "Basic "+auth)
 	req.Header.Set("Accept", "application/json")
 
@@ -141,7 +141,7 @@ func (c *Client) getRaw(rawURL string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	auth := base64.StdEncoding.EncodeToString([]byte(c.Email + ":" + c.Token))
+	auth := base64.StdEncoding.EncodeToString([]byte(c.Email + ":" + c.APIToken))
 	req.Header.Set("Authorization", "Basic "+auth)
 	req.Header.Set("Accept", "application/json")
 

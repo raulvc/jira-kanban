@@ -77,7 +77,7 @@ func (c *Client) sendJSON(method, rawURL string, body any) error {
 	if err != nil {
 		return err
 	}
-	auth := base64.StdEncoding.EncodeToString([]byte(c.Email + ":" + c.Token))
+	auth := base64.StdEncoding.EncodeToString([]byte(c.Email + ":" + c.APIToken))
 	req.Header.Set("Authorization", "Basic "+auth)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")

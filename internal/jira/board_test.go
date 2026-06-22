@@ -33,7 +33,7 @@ func (f *fakeJira) client() *Client {
 	return &Client{
 		BaseURL:    f.server.URL,
 		Email:      "test@test.com",
-		Token:      "tok",
+		APIToken:   "tok",
 		HTTPClient: f.server.Client(),
 	}
 }

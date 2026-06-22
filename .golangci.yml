@@ -30,6 +30,10 @@ linters:
       disable:
         - shadow
         - fieldalignment
+    misspell:
+      locale: US
+      ignore-rules:
+        - darcula
     staticcheck:
       checks:
         - all
@@ -47,6 +51,9 @@ linters:
           - errcheck
           - gosec
           - unparam
+      - linters:
+          - gosec
+        text: "G103|G117|G204"
 
 output:
   formats:

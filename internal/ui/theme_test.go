@@ -57,9 +57,9 @@ func TestThemeRoundTripViaConfig(t *testing.T) {
 	cfg := config.Config{
 		BaseURL: "https://example.atlassian.net",
 		Email:   "user@example.com",
-		Token:   "secret-token",
+		APIToken: "secret-token",
 		BoardID: 42,
-		Theme:   "Darcula", //nolint:misspell // JetBrains theme name
+		Theme:   "Darcula",
 	}
 	if err := config.Save(path, cfg); err != nil {
 		t.Fatal(err)
@@ -69,12 +69,12 @@ func TestThemeRoundTripViaConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Theme != "Darcula" { //nolint:misspell // JetBrains theme name
-		t.Fatalf("Theme: got %q, want %q", loaded.Theme, "Darcula") //nolint:misspell // JetBrains theme name
+	if loaded.Theme != "Darcula" {
+		t.Fatalf("Theme: got %q, want %q", loaded.Theme, "Darcula")
 	}
 
 	SetThemeByName(loaded.Theme)
-	if T().Name != "Darcula" { //nolint:misspell // JetBrains theme name
-		t.Fatalf("after SetThemeByName got %q, want %q", T().Name, "Darcula") //nolint:misspell // JetBrains theme name
+	if T().Name != "Darcula" {
+		t.Fatalf("after SetThemeByName got %q, want %q", T().Name, "Darcula")
 	}
 }
