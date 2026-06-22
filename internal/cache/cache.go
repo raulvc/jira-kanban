@@ -11,6 +11,9 @@ import (
 )
 
 // Entry is a cached issue stored by key.
+// AddedAt tracks when the entry first entered the cache; entries younger
+// than a few minutes are protected from deletion during re-validation
+// because Jira's search index may not have caught up yet.
 type Entry struct {
 	Key         string   `json:"key"`
 	Summary     string   `json:"summary"`
@@ -21,6 +24,7 @@ type Entry struct {
 	Description string   `json:"description"`
 	Epic        string   `json:"epic"`
 	Rank        string   `json:"rank,omitempty"`
+	AddedAt     string   `json:"added_at,omitempty"`
 }
 
 // Store holds the full cache state for a single board.
@@ -82,11 +86,20 @@ func (s *Store) Save() error {
 
 // Merge upserts entries into the cache and updates FetchedAt.
 // If a new entry has no Rank but an existing entry does, the Rank is preserved.
+// If a new entry has no AddedAt but the existing one does, AddedAt is preserved.
 func (s *Store) Merge(entries []Entry, fetchedAt time.Time) {
+	now := time.Now().UTC().Format(time.RFC3339)
 	for _, e := range entries {
 		if e.Rank == "" {
 			if existing, ok := s.Issues[e.Key]; ok && existing.Rank != "" {
 				e.Rank = existing.Rank
+			}
+		}
+		if e.AddedAt == "" {
+			if existing, ok := s.Issues[e.Key]; ok && existing.AddedAt != "" {
+				e.AddedAt = existing.AddedAt
+			} else {
+				e.AddedAt = now
 			}
 		}
 		s.Issues[e.Key] = e
@@ -113,6 +126,16 @@ func (s *Store) UpdateAssignee(key, assignee string) {
 	}
 	e.Assignee = assignee
 	s.Issues[key] = e
+}
+
+// UpsertEntry inserts or updates a single entry without advancing FetchedAt.
+// Used to inject a newly created issue so that the next incremental sync
+// does not skip over it.
+func (s *Store) UpsertEntry(e Entry) {
+	if e.AddedAt == "" {
+		e.AddedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	s.Issues[e.Key] = e
 }
 
 // IsEmpty reports whether the cache has any issues.

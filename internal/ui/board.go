@@ -307,9 +307,6 @@ func drawBoard(screen tcell.Screen, s *boardState, boardID, x, y, width, height 
 	drawHelpBar(screen, x, y+height-1, width)
 	drawColumns(screen, s, &fd, x, y+2, width, height-3)
 
-	if s.modal != nil {
-		drawModal(screen, s.modal, width, height)
-	}
 	if s.filter != nil {
 		drawFilterModal(screen, s.filter, width, height, s.currentUser)
 	}
@@ -318,6 +315,9 @@ func drawBoard(screen tcell.Screen, s *boardState, boardID, x, y, width, height 
 	}
 	if s.detail != nil {
 		drawDetailModal(screen, s.detail, width, height)
+	}
+	if s.modal != nil {
+		drawModal(screen, s.modal, width, height)
 	}
 	if s.assigneePicker != nil {
 		drawAssigneePicker(screen, s.assigneePicker, width, height, s.currentUser)

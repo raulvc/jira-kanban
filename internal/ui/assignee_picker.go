@@ -22,7 +22,7 @@ type assigneePickerState struct {
 	debounce     *time.Timer
 }
 
-func newAssigneePickerState(issueKey, currentAssignee string, boardData jira.Board) *assigneePickerState {
+func newAssigneePickerState(issueKey, currentAssignee, currentUser string, boardData jira.Board) *assigneePickerState {
 	boardNames := make(map[string]bool)
 	for _, col := range boardData.Columns {
 		for _, c := range col.Issues {
@@ -44,6 +44,13 @@ func newAssigneePickerState(issueKey, currentAssignee string, boardData jira.Boa
 	if currentAssignee != "" && currentAssignee != "Unassigned" {
 		for i, u := range users {
 			if u.DisplayName == currentAssignee {
+				selected = i
+				break
+			}
+		}
+	} else if currentUser != "" {
+		for i, u := range users {
+			if u.DisplayName == currentUser {
 				selected = i
 				break
 			}

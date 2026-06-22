@@ -109,7 +109,7 @@ func (c *Client) CreateSubtask(projectKey, issueTypeID, summary, description, pa
 }
 
 // CreateIssue creates a new Jira issue and returns its key.
-func (c *Client) CreateIssue(projectKey, issueTypeID, summary, description, epicKey string) (CreateIssueResult, error) {
+func (c *Client) CreateIssue(projectKey, issueTypeID, summary, description string) (CreateIssueResult, error) {
 	u := fmt.Sprintf("%s/rest/api/3/issue", c.BaseURL)
 	fields := map[string]any{
 		"project":   map[string]string{"key": projectKey},
@@ -119,15 +119,30 @@ func (c *Client) CreateIssue(projectKey, issueTypeID, summary, description, epic
 	if description != "" {
 		fields["description"] = descToADF(description)
 	}
-	if epicKey != "" {
-		fields["epic"] = map[string]string{"key": epicKey}
-	}
 	body := map[string]any{"fields": fields}
 	var result CreateIssueResult
 	if err := c.postJSONResponse(u, body, &result); err != nil {
 		return CreateIssueResult{}, fmt.Errorf("create issue: %w", err)
 	}
 	return result, nil
+}
+
+// LinkEpic sets the parent of an existing issue to the given epic key using
+// the Jira Cloud unified parent field.  If the project uses the old hierarchy
+// this may silently fail — the issue still appears on the board, just without
+// an epic.
+func (c *Client) LinkEpic(issueKey, epicKey string) error {
+	u := fmt.Sprintf("%s/rest/api/3/issue/%s", c.BaseURL, issueKey)
+	body := map[string]any{
+		"fields": map[string]any{
+			"parent": map[string]string{"key": epicKey},
+		},
+	}
+	err := c.putJSON(u, body)
+	if err != nil {
+		return fmt.Errorf("link epic %s to %s: %w", epicKey, issueKey, err)
+	}
+	return nil
 }
 
 // urlRe matches http(s) URLs in text.

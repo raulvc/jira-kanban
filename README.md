@@ -48,7 +48,10 @@ You can switch boards without editing the config:
 ```
 jira-kanban 17           # positional board ID
 jira-kanban --board 17   # flag form
+jira-kanban --debug      # verbose debug logging
 ```
+
+Logs are always written to a platform-appropriate location (`/var/log/jira-kanban/debug.log` on Linux, `~/Library/Logs/jira-kanban/debug.log` on macOS). Pass `--debug` to increase verbosity and print the log path on startup.
 
 ## Keyboard shortcuts
 

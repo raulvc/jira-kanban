@@ -34,20 +34,19 @@ linters:
       checks:
         - all
         - -ST1000
-
-exclusions:
-  generated: strict
-  presets:
-    - comments
-    - std-error-handling
-    - common-false-positives
-  rules:
-    - path: _test\.go
-      linters:
-        - gocyclo
-        - errcheck
-        - gosec
-        - unparam
+  exclusions:
+    generated: strict
+    presets:
+      - comments
+      - std-error-handling
+      - common-false-positives
+    rules:
+      - path: _test\.go
+        linters:
+          - gocyclo
+          - errcheck
+          - gosec
+          - unparam
 
 output:
   formats:

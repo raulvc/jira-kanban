@@ -77,7 +77,7 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 
 	closeY := oy + boxH - 2
 	closeStyle := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
-	closeText := " Esc/q close • a assign • c subtask "
+	closeText := " Esc/q close • a assign • t transition • c subtask "
 	if d.isSubDetail {
 		closeText = " Esc/q back "
 	}

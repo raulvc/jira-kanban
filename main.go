@@ -2,12 +2,13 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/raulvc/jira-kanban/internal/config"
+	"github.com/raulvc/jira-kanban/internal/debug"
 	"github.com/raulvc/jira-kanban/internal/jira"
 	"github.com/raulvc/jira-kanban/internal/ui"
 )
@@ -20,6 +21,17 @@ func main() {
 }
 
 func run() error {
+	debugFlag := flag.Bool("debug", false, "enable verbose debug logging")
+	boardFlag := flag.Int("board", 0, "board ID override")
+	flag.Parse()
+
+	logPath, err := debug.Init(*debugFlag)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "warning:", err)
+	} else if *debugFlag {
+		fmt.Fprintf(os.Stderr, "  Debug log: %s\n", logPath)
+	}
+
 	cfgFile, err := config.Path()
 	if err != nil {
 		return err
@@ -30,6 +42,10 @@ func run() error {
 		return fmt.Errorf("reading config: %w", err)
 	}
 
+	// Apply board flag overrides: --board flag takes priority, then positional arg.
+	if *boardFlag > 0 {
+		cfg.BoardID = *boardFlag
+	}
 	parseBoardFlag(&cfg)
 
 	if err := config.Ensure(&cfg, func() error {
@@ -40,6 +56,11 @@ func run() error {
 	}
 
 	client := jira.NewClient(cfg.BaseURL, cfg.Email, cfg.Token)
+
+	// Eagerly fetch account ID so sync can query recent activity.
+	if me, err := client.GetCurrentUser(); err == nil {
+		client.AccountID = me.AccountID
+	}
 
 	data, fromCache, err := client.FetchBoard(cfg.BoardID, printProgress)
 	if err != nil {
@@ -78,15 +99,29 @@ func clearProgress() {
 	fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 80))
 }
 
-// parseBoardFlag applies --board or positional board ID overrides.
+// parseBoardFlag applies positional board ID overrides (when --board was not set).
 func parseBoardFlag(cfg *config.Config) {
-	for i, arg := range os.Args[1:] {
-		if arg == "--board" && i+1 < len(os.Args)-1 {
-			if id, err := strconv.Atoi(os.Args[i+2]); err == nil {
-				cfg.BoardID = id
-			}
-		} else if id, err := strconv.Atoi(arg); err == nil && id > 0 {
+	for _, arg := range os.Args[1:] {
+		if arg == "--board" || arg == "-board" {
+			continue
+		}
+		if id, err := parsePositiveInt(arg); err == nil && id > 0 {
 			cfg.BoardID = id
 		}
 	}
+}
+
+func parsePositiveInt(s string) (int, error) {
+	// Skip flag-like args
+	if strings.HasPrefix(s, "-") {
+		return 0, fmt.Errorf("not a positive int: %s", s)
+	}
+	var n int
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return 0, fmt.Errorf("not a positive int: %s", s)
+		}
+		n = n*10 + int(r-'0')
+	}
+	return n, nil
 }

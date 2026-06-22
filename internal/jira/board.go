@@ -3,6 +3,7 @@ package jira
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"sort"
 	"strconv"
@@ -92,33 +93,172 @@ func (c *Client) syncCache(store *cache.Store, boardID int, statusIDs []string, 
 	}
 
 	// 2. Re-validate cached keys: check which ones are still on the board
-	//    with a visible status.  Only the keys we already have — not the
-	//    entire board.
-	cachedKeys := make([]string, 0, len(store.Issues))
-	for k := range store.Issues {
-		cachedKeys = append(cachedKeys, k)
+	//    with a visible status.  Recently-added entries that Jira's search
+	//    index hasn't caught up with are verified directly.
+	visibleSet := make(map[string]bool, len(statusIDs))
+	for _, id := range statusIDs {
+		visibleSet[id] = true
 	}
+	c.revalidateCache(store, visibleSet, onProgress)
 
-	if len(cachedKeys) > 0 {
-		live, fetchErr := c.fetchKeyStatuses(cachedKeys, onProgress)
-		if fetchErr != nil {
-			return fetchErr
-		}
-
-		visibleSet := make(map[string]bool, len(statusIDs))
-		for _, id := range statusIDs {
-			visibleSet[id] = true
-		}
-
-		for _, key := range cachedKeys {
-			status, exists := live[key]
-			if !exists || !visibleSet[status] {
-				delete(store.Issues, key)
-			}
+	// 3. Recover recently active issues that the search-index lag may
+	//    have caused steps 1–2 to miss.  The activity query uses a
+	//    different Jira search context (by user) that is typically faster
+	//    to update than the board-specific index.
+	if c.AccountID != "" {
+		if err := c.syncRecentActivity(store, statusIDs); err != nil {
+			slog.Warn("recent-activity sync failed", "error", err)
 		}
 	}
 
 	store.FetchedAt = time.Now()
+	return nil
+}
+
+// revalidateCache checks which cached keys are still visible on the board.
+// Keys that are absent from the Jira search index but were added recently
+// (within freshWindow) are verified directly via the per-issue API endpoint,
+// which bypasses search-index lag.
+func (c *Client) revalidateCache(store *cache.Store, visibleSet map[string]bool, onProgress func(SyncProgress)) {
+	cachedKeys := make([]string, 0, len(store.Issues))
+	for k := range store.Issues {
+		cachedKeys = append(cachedKeys, k)
+	}
+	if len(cachedKeys) == 0 {
+		return
+	}
+
+	live, fetchErr := c.fetchKeyStatuses(cachedKeys, onProgress)
+	if fetchErr != nil {
+		return
+	}
+
+	const freshWindow = 5 * time.Minute
+	var unconfirmed []string
+	for _, key := range cachedKeys {
+		status, exists := live[key]
+		if exists && visibleSet[status] {
+			continue
+		}
+		if e, ok := store.Issues[key]; ok && isFresh(e.AddedAt, freshWindow) {
+			unconfirmed = append(unconfirmed, key)
+			continue
+		}
+		delete(store.Issues, key)
+	}
+
+	if len(unconfirmed) == 0 {
+		return
+	}
+	confirmed, verifyErr := c.verifyIssues(unconfirmed, visibleSet)
+	if verifyErr != nil {
+		slog.Warn("failed to verify recent issues", "error", verifyErr)
+		return
+	}
+	for _, key := range unconfirmed {
+		if verified, ok := confirmed[key]; ok {
+			if existing, hasExisting := store.Issues[key]; hasExisting {
+				verified.AddedAt = existing.AddedAt
+				if verified.Description == "" {
+					verified.Description = existing.Description
+				}
+				if verified.Rank == "" {
+					verified.Rank = existing.Rank
+				}
+			}
+			store.Issues[key] = verified
+		} else {
+			delete(store.Issues, key)
+		}
+	}
+}
+
+// isFresh reports whether an AddedAt timestamp (RFC 3339) is within window
+// of now.  Entries that recently entered the cache are protected from
+// deletion during re-validation because Jira's search index may lag.
+func isFresh(addedAt string, window time.Duration) bool {
+	if addedAt == "" {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339, addedAt)
+	if err != nil {
+		return false
+	}
+	return time.Since(t) < window
+}
+
+// verifyIssues checks a set of issue keys directly (bypassing JQL search)
+// and returns cache entries for those that exist and have a visible status.
+// Keys that are not found or have a non-visible status are absent from the
+// returned map.
+func (c *Client) verifyIssues(keys []string, visibleSet map[string]bool) (map[string]cache.Entry, error) {
+	result := make(map[string]cache.Entry, len(keys))
+	for _, key := range keys {
+		u := fmt.Sprintf("%s/rest/api/3/issue/%s?fields=summary,status,assignee,labels,epic", c.BaseURL, key)
+		var iss issue
+		if err := c.getJSON(u, &iss); err != nil {
+			if strings.Contains(err.Error(), "404") {
+				continue
+			}
+			return result, fmt.Errorf("verify %s: %w", key, err)
+		}
+		sid := strings.TrimSpace(iss.Fields.Status.ID)
+		if !visibleSet[sid] {
+			continue
+		}
+		result[key] = cache.Entry{
+			Key:      iss.Key,
+			Summary:  iss.Fields.Summary,
+			StatusID: sid,
+			Status:   strings.TrimSpace(iss.Fields.Status.Name),
+			Assignee: assigneeName(iss),
+			Labels:   iss.Fields.Labels,
+			Epic:     epicName(iss),
+		}
+	}
+	return result, nil
+}
+
+// syncRecentActivity queries the user's recent Jira activity and merges any
+// issues that belong on the board (visible status) but are missing from the
+// cache.  This recovers newly created issues that the board-specific JQL
+// search index hasn't caught up with yet.
+func (c *Client) syncRecentActivity(store *cache.Store, statusIDs []string) error {
+	items, err := c.SearchRecentActivity(c.AccountID, 1)
+	if err != nil {
+		return err
+	}
+	visibleSet := make(map[string]bool, len(statusIDs))
+	for _, id := range statusIDs {
+		visibleSet[id] = true
+	}
+
+	var missing []string
+	for _, item := range items {
+		if _, ok := store.Issues[item.Key]; ok {
+			continue
+		}
+		missing = append(missing, item.Key)
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+
+	// Fetch full details for missing keys and merge any that have a
+	// visible status.
+	confirmed, verifyErr := c.verifyIssues(missing, visibleSet)
+	if verifyErr != nil {
+		return verifyErr
+	}
+	var entries []cache.Entry
+	for _, key := range missing {
+		if entry, ok := confirmed[key]; ok {
+			entries = append(entries, entry)
+		}
+	}
+	if len(entries) > 0 {
+		store.Merge(entries, store.FetchedAt)
+	}
 	return nil
 }
 
@@ -611,6 +751,7 @@ func buildBoard(boardName string, mappings []columnMapping, issues []issue) Boar
 		card := Card{
 			Key:      iss.Key,
 			Summary:  iss.Fields.Summary,
+			StatusID: strings.TrimSpace(iss.Fields.Status.ID),
 			Status:   iss.Fields.Status.Name,
 			Assignee: assigneeName(iss),
 			Labels:   iss.Fields.Labels,

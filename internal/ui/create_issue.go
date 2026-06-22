@@ -441,10 +441,12 @@ func drawCreateIssue(screen tcell.Screen, c *createIssueState, screenW, screenH 
 		epicListH = epicMaxVis
 		epicSepRow = 1
 	}
-	contentH := 15 + descExtra + epicListH + epicSepRow
+	const maxErrLines = 3
+	errLines := 0
 	if c.errMsg != "" {
-		contentH++
+		errLines = min(wrappedLineCount(c.errMsg, contentW-3), maxErrLines)
 	}
+	contentH := 15 + descExtra + epicListH + epicSepRow + errLines
 
 	boxW := contentW + padding*2
 	boxH := contentH + padding
@@ -493,8 +495,16 @@ func drawCreateIssue(screen tcell.Screen, c *createIssueState, screenW, screenH 
 	cy = drawCreateEpicSection(screen, c, lay, cy, labelStyle, activeLabelStyle, inputStyle, activeInputStyle, inputPlaceholder, activeBorder, sepStyle, bgStyle)
 
 	if c.errMsg != "" {
-		cy++
-		drawText(screen, ox+padding, cy, " ✗ "+truncStr(c.errMsg, contentW-3), errStyle, contentW)
+		lines := wrapText(c.errMsg, contentW-3)
+		for i := range min(len(lines), maxErrLines) {
+			fillRow(screen, ox+1, cy, boxW-2, bgStyle)
+			prefix := " ✗ "
+			if i > 0 {
+				prefix = "   "
+			}
+			drawText(screen, ox+padding, cy, prefix+lines[i], errStyle, contentW)
+			cy++
+		}
 	}
 
 	drawCreateButtons(screen, c, lay, bgStyle, sepStyle, borderStyle)

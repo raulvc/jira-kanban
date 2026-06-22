@@ -131,6 +131,7 @@ type issueEpic struct {
 type Card struct {
 	Key         string
 	Summary     string
+	StatusID    string
 	Status      string
 	Assignee    string
 	Labels      []string

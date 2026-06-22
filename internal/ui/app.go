@@ -2,11 +2,15 @@ package ui
 
 import (
 	"fmt"
+	"log/slog"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+
+	"github.com/raulvc/jira-kanban/internal/cache"
 	"github.com/raulvc/jira-kanban/internal/jira"
 )
 
@@ -70,11 +74,11 @@ func Run(client *jira.Client, boardID int, data jira.Board, baseURL string, need
 		if state.history != nil {
 			return handleHistoryInput(ctx, event)
 		}
-		if state.detail != nil {
-			return handleDetailInput(ctx, event)
-		}
 		if state.modal != nil {
 			return handleModalInput(ctx, event)
+		}
+		if state.detail != nil {
+			return handleDetailInput(ctx, event)
 		}
 		return handleBoardInput(ctx, event)
 	})
@@ -337,7 +341,12 @@ func handleEpicFilterInput(ctx *appContext, event *tcell.EventKey) *tcell.EventK
 // ── actions ─────────────────────────────────────────────────────────────────
 
 func openTransitionModal(ctx *appContext) {
-	card := ctx.state.selectedCard()
+	var card *jira.Card
+	if d := ctx.state.detail; d != nil {
+		card = &d.card
+	} else {
+		card = ctx.state.selectedCard()
+	}
 	if card == nil {
 		return
 	}
@@ -377,6 +386,9 @@ func executeTransition(ctx *appContext) {
 
 	ctx.state.modal = nil
 	ctx.state.moveIssueToStatus(issueKey, toStatus)
+	if d := ctx.state.detail; d != nil && d.card.Key == issueKey {
+		d.card.Status = toStatus
+	}
 	ctx.state.statusMsg = fmt.Sprintf(" Transitioning %s → %s…", issueKey, transitionName)
 	ctx.app.ForceDraw()
 
@@ -421,7 +433,7 @@ func openIssueDetail(ctx *appContext) {
 			}
 			if err != nil {
 				d.loading = false
-				d.err = err.Error()
+				d.err = err.Error(); slog.Error("detail load failed", "key", d.card.Key, "error", err)
 				return
 			}
 			d.card = full
@@ -485,6 +497,9 @@ func handleDetailRune(ctx *appContext, d *detailState, event *tcell.EventKey) *t
 		return nil
 	case 'a':
 		openAssigneePicker(ctx)
+		return nil
+	case 't':
+		openTransitionModal(ctx)
 		return nil
 	case 'c':
 		if ctx.state.projectKey != "" {
@@ -569,7 +584,7 @@ func openSubDetail(ctx *appContext, parent *detailState, key string) {
 			}
 			if err != nil {
 				sub.loading = false
-				sub.err = err.Error()
+				sub.err = err.Error(); slog.Error("sub-detail load failed", "key", sub.card.Key, "error", err)
 				return
 			}
 			sub.card = full
@@ -602,7 +617,7 @@ func openAssigneePicker(ctx *appContext) {
 	}
 	issueKey := card.Key
 
-	picker := newAssigneePickerState(issueKey, card.Assignee, ctx.state.data)
+	picker := newAssigneePickerState(issueKey, card.Assignee, ctx.state.currentUser, ctx.state.data)
 	ctx.state.assigneePicker = picker
 }
 
@@ -620,7 +635,7 @@ func startAssigneeSearch(ctx *appContext, a *assigneePickerState) {
 				return
 			}
 			if err != nil {
-				p.errMsg = err.Error()
+				p.errMsg = err.Error(); slog.Error("assignee picker failed", "error", err)
 				return
 			}
 			p.mergeAPIResults(users)
@@ -745,7 +760,7 @@ func openCreateIssue(ctx *appContext) {
 				return
 			}
 			if err != nil {
-				c.errMsg = err.Error()
+				c.errMsg = err.Error(); slog.Error("create issue failed", "error", err)
 				return
 			}
 			if len(types) > 0 {
@@ -784,7 +799,7 @@ func openCreateSubtask(ctx *appContext, parentKey string) {
 				return
 			}
 			if err != nil {
-				c.errMsg = err.Error()
+				c.errMsg = err.Error(); slog.Error("create issue failed", "error", err)
 				return
 			}
 			if len(types) > 0 {
@@ -1045,7 +1060,7 @@ func startEpicSearch(ctx *appContext, c *createIssueState) {
 				return
 			}
 			if err != nil {
-				c.errMsg = err.Error()
+				c.errMsg = err.Error(); slog.Error("create issue failed", "error", err)
 				return
 			}
 			sortEpicsByFreq(epics, epicFreq)
@@ -1078,10 +1093,16 @@ func executeCreateIssue(ctx *appContext) {
 	go func() {
 		var result jira.CreateIssueResult
 		var err error
+		epicKey := c.epicKey
 		if c.isSubtask() {
 			result, err = ctx.client.CreateSubtask(pk, typeID, summary, desc, c.parentKey)
 		} else {
-			result, err = ctx.client.CreateIssue(pk, typeID, summary, desc, c.epicKey)
+			result, err = ctx.client.CreateIssue(pk, typeID, summary, desc)
+		}
+		if err == nil && epicKey != "" {
+			if linkErr := ctx.client.LinkEpic(result.Key, epicKey); linkErr != nil {
+				slog.Warn("failed to link epic after create", "key", result.Key, "epic", epicKey, "error", linkErr)
+			}
 		}
 		ctx.app.QueueUpdateDraw(func() {
 			if ctx.state.createIssue != c {
@@ -1089,7 +1110,7 @@ func executeCreateIssue(ctx *appContext) {
 			}
 			if err != nil {
 				c.creating = false
-				c.errMsg = err.Error()
+				c.errMsg = err.Error(); slog.Error("create issue failed", "error", err)
 				return
 			}
 			ctx.state.createIssue = nil
@@ -1112,11 +1133,13 @@ func executeCreateIssue(ctx *appContext) {
 					}
 					if err != nil {
 						d.loading = false
-						d.err = err.Error()
+						d.err = err.Error(); slog.Error("detail load failed", "key", d.card.Key, "error", err)
 						return
 					}
 					d.card = full
 					d.loading = false
+
+					injectCreatedIssue(ctx, full)
 				})
 			}()
 			startSync(ctx)
@@ -1138,7 +1161,7 @@ func openHistory(ctx *appContext) {
 			}
 			h.loading = false
 			if err != nil {
-				h.err = err.Error()
+				h.err = err.Error(); slog.Error("history load failed", "error", err)
 				return
 			}
 			h.items = items
@@ -1200,7 +1223,7 @@ func handleHistoryInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey 
 					}
 					if err != nil {
 						d.loading = false
-						d.err = err.Error()
+						d.err = err.Error(); slog.Error("detail load failed", "key", d.card.Key, "error", err)
 						return
 					}
 					d.card = full
@@ -1214,4 +1237,39 @@ func handleHistoryInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey 
 		return nil
 	}
 	return nil
+}
+
+// injectCreatedIssue adds a newly created issue to the in-memory board state
+// and persists it to the cache file.  The entry's AddedAt timestamp ensures
+// the next incremental sync protects it from deletion if Jira's search index
+// hasn't caught up yet.
+func injectCreatedIssue(ctx *appContext, card jira.Card) {
+	for i := range ctx.state.data.Columns {
+		if strings.EqualFold(ctx.state.data.Columns[i].Name, card.Status) {
+			ctx.state.data.Columns[i].Issues = append(ctx.state.data.Columns[i].Issues, card)
+			if ctx.state.cardIdx != nil && i < len(ctx.state.cardIdx) {
+				ctx.state.cardIdx[i] = 0
+			}
+			ctx.state.selectCardByKey(card.Key)
+			break
+		}
+	}
+	store, loadErr := cache.Load(ctx.boardID)
+	if loadErr != nil {
+		slog.Warn("failed to load cache for inject", "error", loadErr)
+		return
+	}
+	store.UpsertEntry(cache.Entry{
+		Key:      card.Key,
+		Summary:  card.Summary,
+		StatusID: card.StatusID,
+		Status:   card.Status,
+		Assignee: card.Assignee,
+		Labels:   card.Labels,
+		Epic:     card.Epic,
+		Rank:     card.Rank,
+	})
+	if saveErr := store.Save(); saveErr != nil {
+		slog.Warn("failed to save cache after inject", "error", saveErr)
+	}
 }
