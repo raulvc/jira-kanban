@@ -39,7 +39,7 @@ type detailLayout struct {
 // drawDetailModal renders a centered issue detail overlay over the board.
 func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) {
 	const padding = 2
-	contentW := min(60, screenW-6)
+	contentW := min(screenW-6, 120)
 	contentH := detailContentHeight(d, contentW)
 
 	boxW := contentW + padding*2
