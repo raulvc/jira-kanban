@@ -400,7 +400,7 @@ func drawHelpBar(screen tcell.Screen, x, y, width int) {
 	style := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
 	fillRow(screen, x, y, width, style)
 	drawText(screen, x, y,
-		" ←/→ cols • ↑/↓ cards • f filter • e epic • a assign • c create • h history • t transition • o browser • y copy key • r refresh • + theme • q quit",
+		" ←/→ cols • ↑/↓ cards • f filter • e epic • a assign • c create • h history • t transition • o browser • y copy key • ^Y copy url • r refresh • + theme • q quit",
 		style, width)
 }
 

@@ -65,6 +65,7 @@ Logs are always written to a platform-appropriate location (`/var/log/jira-kanba
 | `t` | Transition issue (with search filter) |
 | `o` | Open issue in browser |
 | `y` | Copy issue key to clipboard |
+| `Ctrl+Y` | Copy issue URL to clipboard |
 | `a` | Assign issue (from board or detail view) |
 | `c` | Create issue (from board) / Create subtask (from detail view) |
 | `h` | Recent activity history |
@@ -82,6 +83,7 @@ Logs are always written to a platform-appropriate location (`/var/log/jira-kanba
 - **Create issues & subtasks** — create new issues from the board view, and subtasks from the detail modal. Rich text descriptions with URL linking and code blocks are supported. Tab-navigable OK/Cancel buttons.
 - **Subtask navigation** — view and select subtasks inside the detail modal; press Enter to open a nested detail view for any subtask.
 - **Copy issue key** — press `y` to copy the selected issue's key (e.g. `PROJ-123`) to the system clipboard.
+- **Copy issue URL** — press `Ctrl+Y` to copy the full Jira URL (e.g. `https://yourorg.atlassian.net/browse/PROJ-123`) to the clipboard for easy sharing.
 - **Recent activity history** — press `h` to see your recently updated issues with changelog summaries (e.g. "status: To Do → In Progress · 2h ago").
 
 ### Themes

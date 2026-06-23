@@ -140,6 +140,9 @@ func handleBoardInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyCtrlC:
 		ctx.app.Stop()
 		return nil
+	case tcell.KeyCtrlY:
+		copyIssueURLToClipboard(ctx)
+		return nil
 	case tcell.KeyEscape:
 		if ctx.state.memberFilter != "" {
 			ctx.state.memberFilter = ""
@@ -490,6 +493,9 @@ func handleDetailInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyCtrlC:
 		ctx.app.Stop()
 		return nil
+	case tcell.KeyCtrlY:
+		copyIssueURLToClipboard(ctx)
+		return nil
 	}
 	return nil
 }
@@ -572,6 +578,9 @@ func handleSubDetailInput(ctx *appContext, d *detailState, event *tcell.EventKey
 	case tcell.KeyCtrlC:
 		ctx.app.Stop()
 		return nil
+	case tcell.KeyCtrlY:
+		copyIssueURLToClipboard(ctx)
+		return nil
 	}
 	return nil
 }
@@ -610,16 +619,7 @@ func openIssueBrowser(ctx *appContext) {
 	_ = c.Start()
 }
 
-func copyKeyToClipboard(ctx *appContext) {
-	var card *jira.Card
-	if ctx.state.detail != nil {
-		card = &ctx.state.detail.card
-	} else {
-		card = ctx.state.selectedCard()
-	}
-	if card == nil {
-		return
-	}
+func copyToClipboard(text string) bool {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
@@ -631,15 +631,43 @@ func copyKeyToClipboard(ctx *appContext) {
 	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return
+		return false
 	}
 	if err := cmd.Start(); err != nil {
-		return
+		return false
 	}
-	_, _ = fmt.Fprint(stdin, card.Key)
+	_, _ = fmt.Fprint(stdin, text)
 	_ = stdin.Close()
 	_ = cmd.Wait()
-	ctx.state.statusMsg = fmt.Sprintf(" Copied %s", card.Key)
+	return true
+}
+
+func selectedCard(ctx *appContext) *jira.Card {
+	if ctx.state.detail != nil {
+		return &ctx.state.detail.card
+	}
+	return ctx.state.selectedCard()
+}
+
+func copyKeyToClipboard(ctx *appContext) {
+	card := selectedCard(ctx)
+	if card == nil {
+		return
+	}
+	if copyToClipboard(card.Key) {
+		ctx.state.statusMsg = fmt.Sprintf(" Copied %s", card.Key)
+	}
+}
+
+func copyIssueURLToClipboard(ctx *appContext) {
+	card := selectedCard(ctx)
+	if card == nil {
+		return
+	}
+	url := fmt.Sprintf("%s/browse/%s", ctx.baseURL, card.Key)
+	if copyToClipboard(url) {
+		ctx.state.statusMsg = fmt.Sprintf(" Copied %s", url)
+	}
 }
 
 // ── assignee picker ────────────────────────────────────────────────────────
