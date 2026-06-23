@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/raulvc/jira-kanban/internal/cache"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // ── test helpers ────────────────────────────────────────────────────────────
@@ -115,24 +117,17 @@ func TestBuildBoard_SkipsBacklog(t *testing.T) {
 		{Name: "To Do", StatusIDs: []string{"2"}, StatusNames: []string{"To Do"}},
 		{Name: "Done", StatusIDs: []string{"3"}, StatusNames: []string{"Done"}},
 	}
-	// Only include issues with visible statuses — backlog issues are
-	// excluded by the JQL status filter before buildBoard is called.
 	issues := []issue{
 		makeIssue("P-2", "todo task", "2", "To Do", ""),
 	}
 	board := buildBoard("B", mappings, issues)
 
-	if len(board.Columns) != 2 {
-		t.Fatalf("expected 2 columns (To Do, Done), got %d", len(board.Columns))
-	}
+	is := assert.New(t)
+	is.Len(board.Columns, 2, "expected 2 columns (To Do, Done)")
 	for _, col := range board.Columns {
-		if col.Name == "Backlog" {
-			t.Fatal("Backlog column should be skipped from mappings")
-		}
+		is.NotEqual("Backlog", col.Name, "Backlog column should be skipped from mappings")
 	}
-	if board.Columns[0].Name != "To Do" {
-		t.Fatalf("first column should be To Do, got %q", board.Columns[0].Name)
-	}
+	is.Equal("To Do", board.Columns[0].Name)
 }
 
 func TestBuildBoard_LastColumnCapped(t *testing.T) {
@@ -146,9 +141,7 @@ func TestBuildBoard_LastColumnCapped(t *testing.T) {
 	}
 	board := buildBoard("B", mappings, issues)
 	doneCol := board.Columns[len(board.Columns)-1]
-	if len(doneCol.Issues) != 20 {
-		t.Fatalf("last column should be capped at 20, got %d", len(doneCol.Issues))
-	}
+	assert.Len(t, doneCol.Issues, 20, "last column should be capped at 20")
 }
 
 func TestBuildBoard_PreservesRankOrder(t *testing.T) {
@@ -166,9 +159,10 @@ func TestBuildBoard_PreservesRankOrder(t *testing.T) {
 	issues[2].Rank = "0|i0000m:"
 	board := buildBoard("B", mappings, issues)
 	todo := board.Columns[0]
-	if todo.Issues[0].Key != "P-1" || todo.Issues[1].Key != "P-2" || todo.Issues[2].Key != "P-3" {
-		t.Fatalf("issues with rank should sort by rank: %v", []string{todo.Issues[0].Key, todo.Issues[1].Key, todo.Issues[2].Key})
-	}
+	is := assert.New(t)
+	is.Equal("P-1", todo.Issues[0].Key)
+	is.Equal("P-2", todo.Issues[1].Key)
+	is.Equal("P-3", todo.Issues[2].Key)
 }
 
 func TestBuildBoard_LastColumnPreservesRankOrder(t *testing.T) {
@@ -186,9 +180,10 @@ func TestBuildBoard_LastColumnPreservesRankOrder(t *testing.T) {
 	issues[2].Rank = "0|i0000z:"
 	board := buildBoard("B", mappings, issues)
 	done := board.Columns[len(board.Columns)-1]
-	if done.Issues[0].Key != "P-3" || done.Issues[1].Key != "P-1" || done.Issues[2].Key != "P-2" {
-		t.Fatalf("last column with rank should sort by rank: %v", []string{done.Issues[0].Key, done.Issues[1].Key, done.Issues[2].Key})
-	}
+	is := assert.New(t)
+	is.Equal("P-3", done.Issues[0].Key)
+	is.Equal("P-1", done.Issues[1].Key)
+	is.Equal("P-2", done.Issues[2].Key)
 }
 
 func TestBuildBoard_ResolvesColumnByStatusID(t *testing.T) {
@@ -200,12 +195,9 @@ func TestBuildBoard_ResolvesColumnByStatusID(t *testing.T) {
 		makeIssue("P-1", "task", "10", "To Do", "Alice"),
 	}
 	board := buildBoard("B", mappings, issues)
-	if board.Columns[0].Issues[0].Key != "P-1" {
-		t.Fatal("issue should be in To Do column via status ID mapping")
-	}
-	if board.Columns[0].Issues[0].Assignee != "Alice" {
-		t.Fatal("assignee should be preserved")
-	}
+	is := assert.New(t)
+	is.Equal("P-1", board.Columns[0].Issues[0].Key)
+	is.Equal("Alice", board.Columns[0].Issues[0].Assignee)
 }
 
 func TestBuildBoard_ResolvesColumnByStatusName(t *testing.T) {
@@ -213,42 +205,32 @@ func TestBuildBoard_ResolvesColumnByStatusName(t *testing.T) {
 		{Name: "To Do", StatusIDs: []string{"10"}, StatusNames: []string{"Open"}},
 		{Name: "Done", StatusIDs: []string{"20"}, StatusNames: []string{"Closed"}},
 	}
-	// Issue has status ID "99" which doesn't match any column,
-	// but status name "Open" should fall back to name-based mapping.
 	issues := []issue{
 		makeIssue("P-1", "task", "99", "Open", ""),
 	}
 	board := buildBoard("B", mappings, issues)
-	if board.Columns[0].Name != "To Do" {
-		t.Fatal("first column should be To Do")
-	}
-	if len(board.Columns[0].Issues) != 1 {
-		t.Fatal("issue should be placed in To Do via status name fallback")
-	}
+	is := assert.New(t)
+	is.Equal("To Do", board.Columns[0].Name)
+	is.Len(board.Columns[0].Issues, 1)
 }
 
 func TestBuildBoard_UnmappedStatusCreatesColumn(t *testing.T) {
 	mappings := []columnMapping{
 		{Name: "To Do", StatusIDs: []string{"10"}, StatusNames: []string{"To Do"}},
 	}
-	// Issue with completely unknown status
 	issues := []issue{
 		makeIssue("P-1", "task", "99", "Mystery", ""),
 	}
 	board := buildBoard("B", mappings, issues)
-	// Should create a new column named "Mystery"
+	is := assert.New(t)
 	found := false
 	for _, col := range board.Columns {
 		if col.Name == "Mystery" {
 			found = true
-			if len(col.Issues) != 1 {
-				t.Fatal("Mystery column should have 1 issue")
-			}
+			is.Len(col.Issues, 1)
 		}
 	}
-	if !found {
-		t.Fatal("unmapped status should create a new column")
-	}
+	is.True(found, "unmapped status should create a new column")
 }
 
 func TestVisibleKeys(t *testing.T) {
@@ -260,13 +242,10 @@ func TestVisibleKeys(t *testing.T) {
 		},
 	}
 	keys := board.VisibleKeys()
-	if len(keys) != 3 {
-		t.Fatalf("expected 3 keys, got %d", len(keys))
-	}
+	is := assert.New(t)
+	is.Len(keys, 3)
 	for _, k := range []string{"X-1", "X-2", "X-3"} {
-		if !keys[k] {
-			t.Fatalf("missing key %s", k)
-		}
+		is.True(keys[k], "missing key %s", k)
 	}
 }
 
@@ -283,12 +262,9 @@ func TestPruneCache(t *testing.T) {
 		{Name: "Done", Issues: []Card{{Key: "P-3"}}},
 	}}
 	pruneCache(&store, board)
-	if len(store.Issues) != 2 {
-		t.Fatalf("expected 2 entries after prune, got %d", len(store.Issues))
-	}
-	if _, ok := store.Issues["P-2"]; ok {
-		t.Fatal("P-2 should have been pruned")
-	}
+	is := assert.New(t)
+	is.Len(store.Issues, 2)
+	is.NotContains(store.Issues, "P-2")
 }
 
 // ── visibleStatusIDs tests ──────────────────────────────────────────────────
@@ -300,9 +276,7 @@ func TestVisibleStatusIDs(t *testing.T) {
 		{Name: "Done", StatusIDs: []string{"4"}},
 	}
 	ids := visibleStatusIDs(cols)
-	if len(ids) != 3 {
-		t.Fatalf("expected 3 visible status IDs, got %d", len(ids))
-	}
+	assert.Len(t, ids, 3, "expected 3 visible status IDs")
 }
 
 // ── conversion tests ────────────────────────────────────────────────────────
@@ -313,25 +287,18 @@ func TestIssuesToEntriesRoundTrip(t *testing.T) {
 		makeIssue("P-2", "second", "20", "Done", ""),
 	}
 	entries := issuesToEntries(orig)
-	if len(entries) != 2 {
-		t.Fatalf("expected 2 entries, got %d", len(entries))
-	}
-	if entries[0].Key != "P-1" || entries[0].Assignee != "Alice" {
-		t.Fatalf("unexpected entry 0: %+v", entries[0])
-	}
-	if entries[1].Assignee != "Unassigned" {
-		t.Fatalf("nil assignee should become Unassigned, got %q", entries[1].Assignee)
-	}
+	is := assert.New(t)
+	is.Len(entries, 2)
+	is.Equal("P-1", entries[0].Key)
+	is.Equal("Alice", entries[0].Assignee)
+	is.Equal("Unassigned", entries[1].Assignee)
 
-	// Round-trip back
 	m := map[string]cache.Entry{}
 	for _, e := range entries {
 		m[e.Key] = e
 	}
 	back := entriesToIssues(m)
-	if len(back) != 2 {
-		t.Fatalf("round-trip produced %d issues", len(back))
-	}
+	is.Len(back, 2)
 }
 
 // ── FetchBoard tests (with fake server) ─────────────────────────────────────
@@ -356,41 +323,27 @@ func TestFetchBoard_ColdStart(t *testing.T) {
 
 	var progressCalls int
 	c := fake.client()
+	must := require.New(t)
+	is := assert.New(t)
 	board, fromCache, err := c.FetchBoard(1, func(_ Progress) { progressCalls++ })
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fromCache {
-		t.Fatal("cold start should not be from cache")
-	}
-	if board.Name != "Test Board" {
-		t.Fatalf("expected board name 'Test Board', got %q", board.Name)
-	}
-	// Backlog skipped → 3 columns (To Do, In Progress, Done)
-	if len(board.Columns) != 3 {
-		t.Fatalf("expected 3 columns, got %d", len(board.Columns))
-	}
-	if progressCalls == 0 {
-		t.Fatal("progress callback should have been called")
-	}
+	must.NoError(err)
+	is.False(fromCache, "cold start should not be from cache")
+	is.Equal("Test Board", board.Name)
+	is.Len(board.Columns, 3, "expected 3 columns (Backlog skipped)")
+	is.True(progressCalls > 0, "progress callback should have been called")
 
-	// Cache should now be populated
 	store, _ := cache.Load(1)
-	if store.IsEmpty() {
-		t.Fatal("cache should be populated after cold start")
-	}
+	is.False(store.IsEmpty(), "cache should be populated after cold start")
 }
 
 func TestFetchBoard_WarmStart(t *testing.T) {
 	tmpCache(t)
 
-	// Pre-populate cache
+	must := require.New(t)
 	store := cache.Store{BoardID: 1, Issues: map[string]cache.Entry{
 		"P-1": {Key: "P-1", Summary: "cached", StatusID: "2", Status: "To Do", Assignee: "Unassigned"},
 	}, FetchedAt: time.Now()}
-	if err := store.Save(); err != nil {
-		t.Fatal(err)
-	}
+	must.NoError(store.Save())
 
 	fake := newFakeJira()
 	defer fake.close()
@@ -398,23 +351,17 @@ func TestFetchBoard_WarmStart(t *testing.T) {
 	fake.handle("GET /rest/agile/1.0/board/1/configuration", func(w http.ResponseWriter, _ *http.Request) {
 		jsonResponse(w, boardConfigJSON())
 	})
-	// The board issues endpoint should NOT be called on warm start.
 	fake.handle("GET /rest/agile/1.0/board/1/issue", func(w http.ResponseWriter, _ *http.Request) {
 		t.Error("board issues endpoint should not be called on warm start")
 		jsonResponse(w, boardIssuesResponse{})
 	})
 
 	c := fake.client()
+	is := assert.New(t)
 	board, fromCache, err := c.FetchBoard(1, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !fromCache {
-		t.Fatal("warm start should be from cache")
-	}
-	if board.Columns[0].Issues[0].Summary != "cached" {
-		t.Fatal("should use cached data")
-	}
+	must.NoError(err)
+	is.True(fromCache, "warm start should be from cache")
+	is.Equal("cached", board.Columns[0].Issues[0].Summary)
 }
 
 // ── syncCache tests ─────────────────────────────────────────────────────────
@@ -444,13 +391,9 @@ func TestSyncCacheFull_NoTimestamp(t *testing.T) {
 
 	store := cache.Store{BoardID: 1, Issues: map[string]cache.Entry{}}
 	c := fake.client()
-	err := c.syncCacheFull(&store, 1, []string{"2", "3"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(store.Issues) != 2 {
-		t.Fatalf("expected 2 cached issues, got %d", len(store.Issues))
-	}
+	must := require.New(t)
+	must.NoError(c.syncCacheFull(&store, 1, []string{"2", "3"}, nil))
+	assert.Len(t, store.Issues, 2, "expected 2 cached issues")
 }
 
 func TestSyncCache_Incremental(t *testing.T) {
@@ -458,7 +401,6 @@ func TestSyncCache_Incremental(t *testing.T) {
 	fake := newFakeJira()
 	defer fake.close()
 
-	// fetchChangedIssues endpoint — returns one changed issue
 	fake.handle("GET /rest/agile/1.0/board/1/issue", func(w http.ResponseWriter, _ *http.Request) {
 		jsonResponse(w, boardIssuesResponse{
 			Total: 1,
@@ -468,7 +410,6 @@ func TestSyncCache_Incremental(t *testing.T) {
 		})
 	})
 
-	// fetchKeyStatuses endpoint — both keys still exist
 	fake.handle("POST /rest/api/3/search/jql", func(w http.ResponseWriter, _ *http.Request) {
 		jsonResponse(w, searchJqlResponse{
 			Issues: []issue{
@@ -487,19 +428,12 @@ func TestSyncCache_Incremental(t *testing.T) {
 		},
 	}
 	c := fake.client()
-	err := c.syncCache(&store, 1, []string{"2", "3"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if store.Issues["P-1"].Summary != "updated summary" {
-		t.Fatalf("P-1 should be updated, got %q", store.Issues["P-1"].Summary)
-	}
-	if store.Issues["P-1"].StatusID != "3" {
-		t.Fatal("P-1 status should be updated")
-	}
-	if store.Issues["P-2"].Summary != "other" {
-		t.Fatal("P-2 should be unchanged")
-	}
+	must := require.New(t)
+	is := assert.New(t)
+	must.NoError(c.syncCache(&store, 1, []string{"2", "3"}, nil))
+	is.Equal("updated summary", store.Issues["P-1"].Summary)
+	is.Equal("3", store.Issues["P-1"].StatusID)
+	is.Equal("other", store.Issues["P-2"].Summary)
 }
 
 func TestSyncCache_RemovesInvisibleIssues(t *testing.T) {
@@ -507,12 +441,10 @@ func TestSyncCache_RemovesInvisibleIssues(t *testing.T) {
 	fake := newFakeJira()
 	defer fake.close()
 
-	// No changed issues
 	fake.handle("GET /rest/agile/1.0/board/1/issue", func(w http.ResponseWriter, _ *http.Request) {
 		jsonResponse(w, boardIssuesResponse{Total: 0, Issues: nil})
 	})
 
-	// fetchKeyStatuses — P-2 moved to status "99" (not visible)
 	fake.handle("POST /rest/api/3/search/jql", func(w http.ResponseWriter, _ *http.Request) {
 		jsonResponse(w, searchJqlResponse{
 			Issues: []issue{
@@ -531,16 +463,11 @@ func TestSyncCache_RemovesInvisibleIssues(t *testing.T) {
 		},
 	}
 	c := fake.client()
-	err := c.syncCache(&store, 1, []string{"2", "3"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := store.Issues["P-2"]; ok {
-		t.Fatal("P-2 should be removed (status 99 not visible)")
-	}
-	if _, ok := store.Issues["P-1"]; !ok {
-		t.Fatal("P-1 should remain")
-	}
+	must := require.New(t)
+	is := assert.New(t)
+	must.NoError(c.syncCache(&store, 1, []string{"2", "3"}, nil))
+	is.NotContains(store.Issues, "P-2", "P-2 should be removed (status 99 not visible)")
+	is.Contains(store.Issues, "P-1")
 }
 
 func TestSyncCache_RemovesDeletedIssues(t *testing.T) {
@@ -552,7 +479,6 @@ func TestSyncCache_RemovesDeletedIssues(t *testing.T) {
 		jsonResponse(w, boardIssuesResponse{Total: 0, Issues: nil})
 	})
 
-	// fetchKeyStatuses — P-2 no longer exists
 	fake.handle("POST /rest/api/3/search/jql", func(w http.ResponseWriter, _ *http.Request) {
 		jsonResponse(w, searchJqlResponse{
 			Issues: []issue{
@@ -570,13 +496,9 @@ func TestSyncCache_RemovesDeletedIssues(t *testing.T) {
 		},
 	}
 	c := fake.client()
-	err := c.syncCache(&store, 1, []string{"2", "3"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := store.Issues["P-2"]; ok {
-		t.Fatal("P-2 should be removed (deleted)")
-	}
+	must := require.New(t)
+	must.NoError(c.syncCache(&store, 1, []string{"2", "3"}, nil))
+	assert.NotContains(t, store.Issues, "P-2", "P-2 should be removed (deleted)")
 }
 
 func TestSyncCache_ProgressReported(t *testing.T) {
@@ -604,15 +526,11 @@ func TestSyncCache_ProgressReported(t *testing.T) {
 
 	var phases []string
 	c := fake.client()
-	err := c.syncCache(&store, 1, []string{"2"}, func(p SyncProgress) {
+	must := require.New(t)
+	must.NoError(c.syncCache(&store, 1, []string{"2"}, func(p SyncProgress) {
 		phases = append(phases, p.Phase)
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(phases) == 0 {
-		t.Fatal("progress should have been reported")
-	}
+	}))
+	assert.NotEmpty(t, phases, "progress should have been reported")
 }
 
 // ── RefreshBoard integration test ───────────────────────────────────────────
@@ -639,30 +557,22 @@ func TestRefreshBoard(t *testing.T) {
 		})
 	})
 
-	// Pre-populate cache with timestamp
+	must := require.New(t)
 	store := cache.Store{
 		BoardID:   1,
 		FetchedAt: time.Now().Add(-10 * time.Minute),
 		Issues:    map[string]cache.Entry{"P-1": {Key: "P-1", Summary: "old", StatusID: "2", Status: "To Do", Assignee: "Unassigned"}},
 	}
-	if err := store.Save(); err != nil {
-		t.Fatal(err)
-	}
+	must.NoError(store.Save())
 
 	c := fake.client()
+	is := assert.New(t)
 	board, err := c.RefreshBoard(1, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if board.Name != "Test Board" {
-		t.Fatalf("wrong board name: %q", board.Name)
-	}
+	must.NoError(err)
+	is.Equal("Test Board", board.Name)
 
-	// Verify cache was pruned and saved
 	saved, _ := cache.Load(1)
-	if saved.IsEmpty() {
-		t.Fatal("cache should not be empty after refresh")
-	}
+	is.False(saved.IsEmpty(), "cache should not be empty after refresh")
 }
 
 // ── UpdateCachedStatus test ─────────────────────────────────────────────────
@@ -670,27 +580,24 @@ func TestRefreshBoard(t *testing.T) {
 func TestUpdateCachedStatus(t *testing.T) {
 	tmpCache(t)
 
+	must := require.New(t)
+	is := assert.New(t)
 	store := cache.Store{
 		BoardID: 1,
 		Issues: map[string]cache.Entry{
 			"P-1": {Key: "P-1", Summary: "task", StatusID: "2", Status: "To Do", Assignee: "Unassigned"},
 		},
 	}
-	if err := store.Save(); err != nil {
-		t.Fatal(err)
-	}
+	must.NoError(store.Save())
 
 	c := &Client{}
 	c.UpdateCachedStatus(1, "P-1", "3", "In Progress")
 
 	loaded, _ := cache.Load(1)
 	e := loaded.Issues["P-1"]
-	if e.StatusID != "3" || e.Status != "In Progress" {
-		t.Fatalf("cache not updated: %+v", e)
-	}
-	if e.Summary != "task" {
-		t.Fatal("other fields should be preserved")
-	}
+	is.Equal("3", e.StatusID)
+	is.Equal("In Progress", e.Status)
+	is.Equal("task", e.Summary)
 }
 
 // ── helper ──────────────────────────────────────────────────────────────────
@@ -709,9 +616,8 @@ func TestIssueNum(t *testing.T) {
 		{"noprefix", 0},
 	}
 	for _, tt := range tests {
-		if got := issueNum(tt.key); got != tt.want {
-			t.Errorf("issueNum(%q) = %d, want %d", tt.key, got, tt.want)
-		}
+		is := assert.New(t)
+		is.Equal(tt.want, issueNum(tt.key))
 	}
 }
 
@@ -756,9 +662,8 @@ func TestEpicName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := epicName(tt.iss); got != tt.want {
-				t.Errorf("epicName() = %q, want %q", got, tt.want)
-			}
+			is := assert.New(t)
+			is.Equal(tt.want, epicName(tt.iss))
 		})
 	}
 }

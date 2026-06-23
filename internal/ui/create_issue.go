@@ -563,7 +563,7 @@ func drawCreateDescSection(screen tcell.Screen, c *createIssueState, lay createL
 
 	descBoxY := cy
 	descBoxH := descVisH
-	for row := 0; row < descBoxH; row++ {
+	for range descBoxH {
 		screen.SetContent(lay.ox+2, cy, '│', nil, tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg))
 		fillRow(screen, lay.ox+3, cy, lay.contentW-1, inputStyle)
 		cy++
@@ -573,7 +573,7 @@ func drawCreateDescSection(screen tcell.Screen, c *createIssueState, lay createL
 	maxScroll := max(0, len(lines)-descBoxH)
 	c.descScroll = clamp(c.descScroll, maxScroll)
 
-	for i := 0; i < descBoxH; i++ {
+	for i := range descBoxH {
 		lineIdx := c.descScroll + i
 		row := descBoxY + i
 		screen.SetContent(lay.ox+2, row, '│', nil, tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg))

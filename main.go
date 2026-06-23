@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/raulvc/jira-kanban/internal/config"
@@ -75,11 +76,9 @@ func run() error {
 const barWidth = 30
 
 func printProgress(p jira.Progress) {
-	var label string
+	label := "Syncing changes"
 	if p.Cold {
 		label = "First run — building cache"
-	} else {
-		label = "Syncing changes"
 	}
 
 	if p.Total == 0 {
@@ -105,23 +104,8 @@ func parseBoardFlag(cfg *config.Config) {
 		if arg == "--board" || arg == "-board" {
 			continue
 		}
-		if id, err := parsePositiveInt(arg); err == nil && id > 0 {
+		if id, err := strconv.Atoi(arg); err == nil && id > 0 {
 			cfg.BoardID = id
 		}
 	}
-}
-
-func parsePositiveInt(s string) (int, error) {
-	// Skip flag-like args
-	if strings.HasPrefix(s, "-") {
-		return 0, fmt.Errorf("not a positive int: %s", s)
-	}
-	var n int
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return 0, fmt.Errorf("not a positive int: %s", s)
-		}
-		n = n*10 + int(r-'0')
-	}
-	return n, nil
 }

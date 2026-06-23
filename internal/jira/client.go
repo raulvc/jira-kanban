@@ -20,15 +20,18 @@ type Client struct {
 	AccountID   string // set eagerly so sync can query recent activity
 	HTTPClient  *http.Client
 	RankFieldID int
+	authHeader  string
 }
 
 // NewClient returns a Client configured for the given base URL and credentials.
 func NewClient(baseURL, email, token string) *Client {
+	auth := base64.StdEncoding.EncodeToString([]byte(email + ":" + token))
 	return &Client{
 		BaseURL:    strings.TrimRight(baseURL, "/"),
 		Email:      email,
 		APIToken:   token,
 		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+		authHeader: "Basic " + auth,
 	}
 }
 
@@ -50,23 +53,22 @@ func (c *Client) postJSONRaw(rawURL string, body any) ([]byte, error) {
 	slog.Debug("HTTP POST", "url", rawURL, "body", string(data))
 	req, err := http.NewRequest(http.MethodPost, rawURL, bytes.NewReader(data))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating request: %w", err)
 	}
-	auth := base64.StdEncoding.EncodeToString([]byte(c.Email + ":" + c.APIToken))
-	req.Header.Set("Authorization", "Basic "+auth)
+	req.Header.Set("Authorization", c.authHeader)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		slog.Error("HTTP POST failed", "url", rawURL, "error", err)
-		return nil, err
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading response body: %w", err)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -82,10 +84,9 @@ func (c *Client) Ping(boardID int) error {
 	u := fmt.Sprintf("%s/rest/agile/1.0/board/%d/configuration", c.BaseURL, boardID)
 	req, err := http.NewRequest(http.MethodGet, u, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("creating request: %w", err)
 	}
-	auth := base64.StdEncoding.EncodeToString([]byte(c.Email + ":" + c.APIToken))
-	req.Header.Set("Authorization", "Basic "+auth)
+	req.Header.Set("Authorization", c.authHeader)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.HTTPClient.Do(req)
@@ -139,22 +140,21 @@ func (c *Client) getRaw(rawURL string) ([]byte, error) {
 	slog.Debug("HTTP GET", "url", rawURL)
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating request: %w", err)
 	}
-	auth := base64.StdEncoding.EncodeToString([]byte(c.Email + ":" + c.APIToken))
-	req.Header.Set("Authorization", "Basic "+auth)
+	req.Header.Set("Authorization", c.authHeader)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		slog.Error("HTTP GET failed", "url", rawURL, "error", err)
-		return nil, err
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading response body: %w", err)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -173,6 +173,9 @@ func parseJiraError(statusCode int, body []byte) error {
 		Errors       map[string]string `json:"errors"`
 	}
 	if err := json.Unmarshal(body, &jerr); err == nil {
+		if jerr.Errors == nil {
+			jerr.Errors = map[string]string{}
+		}
 		msgs := make([]string, 0, len(jerr.ErrorMessages)+len(jerr.Errors))
 		msgs = append(msgs, jerr.ErrorMessages...)
 		for f, m := range jerr.Errors {

@@ -48,10 +48,7 @@ func drawHistoryModal(screen tcell.Screen, h *historyState, screenW, screenH int
 
 	ox := (screenW - boxW) / 2
 	oy := (screenH - boxH) / 2
-	maxVis := (boxH - 5) / 2
-	if maxVis < 1 {
-		maxVis = 1
-	}
+	maxVis := max((boxH-5)/2, 1)
 
 	l := historyLayout{
 		ox: ox, boxW: boxW, boxH: boxH,

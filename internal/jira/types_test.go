@@ -4,45 +4,39 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseDescription_Nil(t *testing.T) {
-	got := parseDescription(nil)
-	if got != "" {
-		t.Fatalf("expected empty for nil, got %q", got)
-	}
+	is := assert.New(t)
+	is.Empty(parseDescription(nil))
 }
 
 func TestParseDescription_NullJSON(t *testing.T) {
-	got := parseDescription(json.RawMessage("null"))
-	if got != "" {
-		t.Fatalf("expected empty for null, got %q", got)
-	}
+	is := assert.New(t)
+	is.Empty(parseDescription(json.RawMessage("null")))
 }
 
 func TestParseDescription_PlainString(t *testing.T) {
-	got := parseDescription(json.RawMessage(`"plain text"`))
-	if got != "plain text" {
-		t.Fatalf("expected %q, got %q", "plain text", got)
-	}
+	is := assert.New(t)
+	is.Equal("plain text", parseDescription(json.RawMessage(`"plain text"`)))
 }
 
 func TestParseDescription_ADFObject(t *testing.T) {
+	is := assert.New(t)
 	raw := json.RawMessage(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"hello"}]}]}`)
-	got := parseDescription(raw)
-	if got != "hello" {
-		t.Fatalf("expected %q, got %q", "hello", got)
-	}
+	is.Equal("hello", parseDescription(raw))
 }
 
 func TestAdfToPlain_Nil(t *testing.T) {
-	got := adfToPlain(nil)
-	if got != "" {
-		t.Fatalf("expected empty string for nil, got %q", got)
-	}
+	is := assert.New(t)
+	is.Empty(adfToPlain(nil))
 }
 
 func TestAdfToPlain_SimpleParagraph(t *testing.T) {
+	is := assert.New(t)
 	doc := &adfDoc{
 		Type:    "doc",
 		Version: 1,
@@ -52,13 +46,11 @@ func TestAdfToPlain_SimpleParagraph(t *testing.T) {
 			}},
 		},
 	}
-	got := adfToPlain(doc)
-	if got != "Hello world" {
-		t.Fatalf("expected %q, got %q", "Hello world", got)
-	}
+	is.Equal("Hello world", adfToPlain(doc))
 }
 
 func TestAdfToPlain_MultipleParagraphs(t *testing.T) {
+	is := assert.New(t)
 	doc := &adfDoc{
 		Type:    "doc",
 		Version: 1,
@@ -71,13 +63,11 @@ func TestAdfToPlain_MultipleParagraphs(t *testing.T) {
 			}},
 		},
 	}
-	got := adfToPlain(doc)
-	if got != "First\nSecond" {
-		t.Fatalf("expected %q, got %q", "First\nSecond", got)
-	}
+	is.Equal("First\nSecond", adfToPlain(doc))
 }
 
 func TestAdfToPlain_BulletList(t *testing.T) {
+	is := assert.New(t)
 	doc := &adfDoc{
 		Type:    "doc",
 		Version: 1,
@@ -92,14 +82,11 @@ func TestAdfToPlain_BulletList(t *testing.T) {
 			}},
 		},
 	}
-	got := adfToPlain(doc)
-	want := "• Item 1\n• Item 2"
-	if got != want {
-		t.Fatalf("expected %q, got %q", want, got)
-	}
+	is.Equal("• Item 1\n• Item 2", adfToPlain(doc))
 }
 
 func TestAdfToPlain_HardBreak(t *testing.T) {
+	is := assert.New(t)
 	doc := &adfDoc{
 		Type:    "doc",
 		Version: 1,
@@ -111,18 +98,12 @@ func TestAdfToPlain_HardBreak(t *testing.T) {
 			}},
 		},
 	}
-	got := adfToPlain(doc)
-	if got != "Line 1\nLine 2" {
-		t.Fatalf("expected %q, got %q", "Line 1\nLine 2", got)
-	}
+	is.Equal("Line 1\nLine 2", adfToPlain(doc))
 }
 
 func TestAdfToPlain_EmptyDoc(t *testing.T) {
-	doc := &adfDoc{Type: "doc", Version: 1}
-	got := adfToPlain(doc)
-	if got != "" {
-		t.Fatalf("expected empty, got %q", got)
-	}
+	is := assert.New(t)
+	is.Empty(adfToPlain(&adfDoc{Type: "doc", Version: 1}))
 }
 
 func TestGetIssue_Success(t *testing.T) {
@@ -156,22 +137,14 @@ func TestGetIssue_Success(t *testing.T) {
 		jsonResponse(w, resp)
 	})
 
+	must := require.New(t)
+	is := assert.New(t)
 	card, err := fj.client().GetIssue("PROJ-1")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if card.Key != "PROJ-1" {
-		t.Fatalf("expected key PROJ-1, got %s", card.Key)
-	}
-	if card.Summary != "Test issue" {
-		t.Fatalf("expected summary 'Test issue', got %s", card.Summary)
-	}
-	if card.Description != "Some description" {
-		t.Fatalf("expected description 'Some description', got %s", card.Description)
-	}
-	if card.Assignee != "Alice" {
-		t.Fatalf("expected assignee Alice, got %s", card.Assignee)
-	}
+	must.NoError(err)
+	is.Equal("PROJ-1", card.Key)
+	is.Equal("Test issue", card.Summary)
+	is.Equal("Some description", card.Description)
+	is.Equal("Alice", card.Assignee)
 }
 
 func TestGetIssue_NotFound(t *testing.T) {
@@ -183,12 +156,12 @@ func TestGetIssue_NotFound(t *testing.T) {
 	})
 
 	_, err := fj.client().GetIssue("PROJ-999")
-	if err == nil {
-		t.Fatal("expected error for 404")
-	}
+	assert.Error(t, err, "expected error for 404")
 }
 
 func TestAdfJSONRoundtrip(t *testing.T) {
+	must := require.New(t)
+	is := assert.New(t)
 	raw := `{
 		"type": "doc",
 		"version": 1,
@@ -205,12 +178,7 @@ func TestAdfJSONRoundtrip(t *testing.T) {
 		]
 	}`
 	var doc adfDoc
-	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	must.NoError(json.Unmarshal([]byte(raw), &doc))
 	got := adfToPlain(&doc)
-	want := "Hello\n• one\n• two"
-	if got != want {
-		t.Fatalf("expected %q, got %q", want, got)
-	}
+	is.Equal("Hello\n• one\n• two", got)
 }

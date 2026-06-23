@@ -2,7 +2,6 @@ package jira
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -75,10 +74,9 @@ func (c *Client) sendJSON(method, rawURL string, body any) error {
 	}
 	req, err := http.NewRequest(method, rawURL, bytes.NewReader(data))
 	if err != nil {
-		return err
+		return fmt.Errorf("creating request: %w", err)
 	}
-	auth := base64.StdEncoding.EncodeToString([]byte(c.Email + ":" + c.APIToken))
-	req.Header.Set("Authorization", "Basic "+auth)
+	req.Header.Set("Authorization", c.authHeader)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 

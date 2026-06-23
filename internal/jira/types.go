@@ -146,10 +146,11 @@ type Card struct {
 type DescStyle int
 
 const (
-	DsText     DescStyle = iota // normal text
+	DsUnknown  DescStyle = iota // unknown/default
+	DsText                       // normal text
 	DsLink                       // hyperlink (cyan)
 	DsCode                       // code block (dim/indented)
-	DsHeading                     // heading (bold)
+	DsHeading                    // heading (bold)
 )
 
 // DescSeg is a styled segment of a description.
@@ -332,7 +333,7 @@ func ParseRichDesc(raw json.RawMessage) []DescSeg {
 	if err := json.Unmarshal(raw, &doc); err != nil || doc.Type != "doc" {
 		var s string
 		if err := json.Unmarshal(raw, &s); err == nil && s != "" {
-			return []DescSeg{{Text: s, Style: DsText}}
+			return []DescSeg{{Text: s, Style: DsUnknown}}
 		}
 		return nil
 	}

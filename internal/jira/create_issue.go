@@ -157,8 +157,7 @@ func descToADF(desc string) map[string]any {
 	i := 0
 	for i < len(lines) {
 		// Check for code block fence
-		if strings.HasPrefix(lines[i], "```") {
-			lang := strings.TrimPrefix(lines[i], "```")
+		if lang, ok := strings.CutPrefix(lines[i], "```"); ok {
 			var codeLines []string
 			i++
 			for i < len(lines) && lines[i] != "```" {

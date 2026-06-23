@@ -3,6 +3,9 @@ package jira
 import (
 	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetJSON_Success(t *testing.T) {
@@ -14,14 +17,11 @@ func TestGetJSON_Success(t *testing.T) {
 	})
 
 	c := fake.client()
+	must := require.New(t)
+	is := assert.New(t)
 	var out map[string]string
-	err := c.getJSON(fake.server.URL+"/test", &out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out["key"] != "value" {
-		t.Fatalf("expected 'value', got %q", out["key"])
-	}
+	must.NoError(c.getJSON(fake.server.URL+"/test", &out))
+	is.Equal("value", out["key"])
 }
 
 func TestGetJSON_HTTPError(t *testing.T) {
@@ -36,9 +36,7 @@ func TestGetJSON_HTTPError(t *testing.T) {
 	c := fake.client()
 	var out map[string]string
 	err := c.getJSON(fake.server.URL+"/fail", &out)
-	if err == nil {
-		t.Fatal("expected error on 500")
-	}
+	assert.Error(t, err, "expected error on 500")
 }
 
 func TestPostJSON_HTTPError(t *testing.T) {
@@ -52,9 +50,7 @@ func TestPostJSON_HTTPError(t *testing.T) {
 
 	c := fake.client()
 	err := c.postJSON(fake.server.URL+"/fail", map[string]string{"a": "b"})
-	if err == nil {
-		t.Fatal("expected error on 400")
-	}
+	assert.Error(t, err, "expected error on 400")
 }
 
 func TestPostJSONResponse_Success(t *testing.T) {
@@ -66,14 +62,11 @@ func TestPostJSONResponse_Success(t *testing.T) {
 	})
 
 	c := fake.client()
+	must := require.New(t)
+	is := assert.New(t)
 	var out map[string]int
-	err := c.postJSONResponse(fake.server.URL+"/search", map[string]string{"q": "x"}, &out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out["total"] != 42 {
-		t.Fatalf("expected 42, got %d", out["total"])
-	}
+	must.NoError(c.postJSONResponse(fake.server.URL+"/search", map[string]string{"q": "x"}, &out))
+	is.Equal(42, out["total"])
 }
 
 func TestPostJSONResponse_HTTPError(t *testing.T) {
@@ -88,20 +81,14 @@ func TestPostJSONResponse_HTTPError(t *testing.T) {
 	c := fake.client()
 	var out map[string]int
 	err := c.postJSONResponse(fake.server.URL+"/search", map[string]string{}, &out)
-	if err == nil {
-		t.Fatal("expected error on 403")
-	}
+	assert.Error(t, err, "expected error on 403")
 }
 
 func TestNewClient(t *testing.T) {
+	is := assert.New(t)
 	c := NewClient("https://example.atlassian.net/", "a@b.com", "tok")
-	if c.BaseURL != "https://example.atlassian.net" {
-		t.Fatalf("trailing slash should be trimmed, got %q", c.BaseURL)
-	}
-	if c.Email != "a@b.com" || c.APIToken != "tok" {
-		t.Fatal("credentials not set")
-	}
-	if c.HTTPClient == nil {
-		t.Fatal("HTTPClient should be set")
-	}
+	is.Equal("https://example.atlassian.net", c.BaseURL)
+	is.Equal("a@b.com", c.Email)
+	is.Equal("tok", c.APIToken)
+	is.NotNil(c.HTTPClient)
 }

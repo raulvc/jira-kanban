@@ -15,6 +15,7 @@ linters:
     - copyloopvar
     - errname
     - errorlint
+    - modernize
     - nilerr
     - prealloc
     - unconvert
@@ -54,6 +55,9 @@ linters:
       - linters:
           - gosec
         text: "G103|G117|G204"
+      - linters:
+          - modernize
+        text: "stringsseq"
 
 output:
   formats:

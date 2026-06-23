@@ -5,6 +5,9 @@ import (
 	"io"
 	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetTransitions(t *testing.T) {
@@ -22,34 +25,19 @@ func TestGetTransitions(t *testing.T) {
 	})
 
 	c := fake.client()
+	must := require.New(t)
+	is := assert.New(t)
 	transitions, err := c.GetTransitions("P-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(transitions) != 3 {
-		t.Fatalf("expected 3 transitions, got %d", len(transitions))
-	}
+	must.NoError(err)
+	is.Len(transitions, 3)
 
-	// "Start Progress" → "In Progress" should produce "Start Progress → In Progress"
-	if transitions[0].Name != "Start Progress → In Progress" {
-		t.Fatalf("expected combined name, got %q", transitions[0].Name)
-	}
-	if transitions[0].ToStatusID != "3" {
-		t.Fatalf("expected ToStatusID '3', got %q", transitions[0].ToStatusID)
-	}
-	if transitions[0].ToStatus != "In Progress" {
-		t.Fatalf("expected ToStatus 'In Progress', got %q", transitions[0].ToStatus)
-	}
+	is.Equal("Start Progress → In Progress", transitions[0].Name)
+	is.Equal("3", transitions[0].ToStatusID)
+	is.Equal("In Progress", transitions[0].ToStatus)
 
-	// "Done" → "Done" should NOT produce "Done → Done"
-	if transitions[1].Name != "Done" {
-		t.Fatalf("same name and to.name should not be combined, got %q", transitions[1].Name)
-	}
+	is.Equal("Done", transitions[1].Name, "same name and to.name should not be combined")
 
-	// "Reopen" → "Reopen" (different to.name)
-	if transitions[2].Name != "Reopen" {
-		t.Fatalf("same name and to.name should use name only, got %q", transitions[2].Name)
-	}
+	is.Equal("Reopen", transitions[2].Name)
 }
 
 func TestGetTransitions_Empty(t *testing.T) {
@@ -61,13 +49,11 @@ func TestGetTransitions_Empty(t *testing.T) {
 	})
 
 	c := fake.client()
+	must := require.New(t)
+	is := assert.New(t)
 	transitions, err := c.GetTransitions("P-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(transitions) != 0 {
-		t.Fatalf("expected 0 transitions, got %d", len(transitions))
-	}
+	must.NoError(err)
+	is.Empty(transitions)
 }
 
 func TestGetTransitions_APIError(t *testing.T) {
@@ -81,9 +67,7 @@ func TestGetTransitions_APIError(t *testing.T) {
 
 	c := fake.client()
 	_, err := c.GetTransitions("P-1")
-	if err == nil {
-		t.Fatal("expected error on 403")
-	}
+	assert.Error(t, err, "expected error on 403")
 }
 
 func TestDoTransition(t *testing.T) {
@@ -98,18 +82,13 @@ func TestDoTransition(t *testing.T) {
 	})
 
 	c := fake.client()
-	err := c.DoTransition("P-1", "42")
-	if err != nil {
-		t.Fatal(err)
-	}
+	must := require.New(t)
+	is := assert.New(t)
+	must.NoError(c.DoTransition("P-1", "42"))
 
 	tr, ok := receivedBody["transition"].(map[string]any)
-	if !ok {
-		t.Fatal("request body should contain transition object")
-	}
-	if tr["id"] != "42" {
-		t.Fatalf("expected transition id '42', got %v", tr["id"])
-	}
+	must.True(ok, "request body should contain transition object")
+	is.Equal("42", tr["id"])
 }
 
 func TestDoTransition_Error(t *testing.T) {
@@ -122,8 +101,5 @@ func TestDoTransition_Error(t *testing.T) {
 	})
 
 	c := fake.client()
-	err := c.DoTransition("P-1", "99")
-	if err == nil {
-		t.Fatal("expected error on 400")
-	}
+	assert.Error(t, c.DoTransition("P-1", "99"), "expected error on 400")
 }

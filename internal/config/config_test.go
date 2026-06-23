@@ -3,6 +3,9 @@ package config
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSaveAndLoad(t *testing.T) {
@@ -10,53 +13,92 @@ func TestSaveAndLoad(t *testing.T) {
 	path := filepath.Join(dir, "config.yml")
 
 	cfg := Config{
-		BaseURL: "https://example.atlassian.net",
-		Email:   "user@example.com",
+		BaseURL:  "https://example.atlassian.net",
+		Email:    "user@example.com",
 		APIToken: "secret-token",
-		BoardID: 42,
-		Theme:   "Kanagawa Light",
+		BoardID:  42,
+		Theme:    "Kanagawa Light",
 	}
-	if err := Save(path, cfg); err != nil {
-		t.Fatal(err)
-	}
+	must := require.New(t)
+	is := assert.New(t)
+	must.NoError(Save(path, cfg))
 
 	loaded, err := Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.BaseURL != cfg.BaseURL {
-		t.Fatalf("BaseURL: got %q, want %q", loaded.BaseURL, cfg.BaseURL)
-	}
-	if loaded.Email != cfg.Email {
-		t.Fatalf("Email: got %q, want %q", loaded.Email, cfg.Email)
-	}
-	if loaded.APIToken != cfg.APIToken {
-		t.Fatalf("Token mismatch")
-	}
-	if loaded.BoardID != 42 {
-		t.Fatalf("BoardID: got %d, want 42", loaded.BoardID)
-	}
-	if loaded.Theme != "Kanagawa Light" {
-		t.Fatalf("Theme: got %q, want %q", loaded.Theme, "Kanagawa Light")
-	}
+	must.NoError(err)
+	is.Equal(cfg.BaseURL, loaded.BaseURL)
+	is.Equal(cfg.Email, loaded.Email)
+	is.Equal(cfg.APIToken, loaded.APIToken)
+	is.Equal(42, loaded.BoardID)
+	is.Equal("Kanagawa Light", loaded.Theme)
 }
 
 func TestLoad_NotFound(t *testing.T) {
 	_, err := Load("/nonexistent/path/config.yml")
-	if err == nil {
-		t.Fatal("expected error for missing file")
-	}
+	assert.Error(t, err, "expected error for missing file")
 }
 
 func TestPath(t *testing.T) {
+	must := require.New(t)
+	is := assert.New(t)
 	p, err := Path()
-	if err != nil {
-		t.Fatal(err)
+	must.NoError(err)
+	is.NotEmpty(p)
+	is.Equal("config.yml", filepath.Base(p))
+}
+
+func TestValidateURL(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{name: "valid https", input: "https://example.atlassian.net", want: "https://example.atlassian.net"},
+		{name: "valid http", input: "http://localhost:8080", want: "http://localhost:8080"},
+		{name: "trailing slash stripped", input: "https://example.com/", want: "https://example.com"},
+		{name: "invalid scheme", input: "ftp://example.com", wantErr: true},
+		{name: "no scheme", input: "example.com", wantErr: true},
+		{name: "empty", input: "", wantErr: true},
 	}
-	if p == "" {
-		t.Fatal("path should not be empty")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			is := assert.New(t)
+			got, err := validateURL(tt.input)
+			if tt.wantErr {
+				is.Error(err)
+				return
+			}
+			is.NoError(err)
+			is.Equal(tt.want, got)
+		})
 	}
-	if filepath.Base(p) != "config.yml" {
-		t.Fatalf("expected config.yml, got %s", filepath.Base(p))
+}
+
+func TestValidateEmail(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{name: "valid email", input: "user@example.com"},
+		{name: "no @", input: "userexample.com", wantErr: true},
+		{name: "no dot after @", input: "user@example", wantErr: true},
+		{name: "empty", input: "", wantErr: true},
+		{name: "subdomain", input: "a@b.co.uk"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			is := assert.New(t)
+			_, err := validateEmail(tt.input)
+			if tt.wantErr {
+				is.Error(err)
+				return
+			}
+			is.NoError(err)
+		})
 	}
 }
