@@ -68,6 +68,7 @@ Logs are always written to a platform-appropriate location (`/var/log/jira-kanba
 | `Ctrl+Y` | Copy issue URL to clipboard |
 | `a` | Assign issue (from board or detail view) |
 | `c` | Create issue (from board) / Create subtask (from detail view) |
+| `C` | Clone issue (copies description, labels, and epic) |
 | `h` | Recent activity history |
 | `+` | Cycle theme |
 | `r` | Refresh board |
@@ -81,6 +82,7 @@ Logs are always written to a platform-appropriate location (`/var/log/jira-kanba
 - **Optimistic transitions** — moving a card updates the UI immediately, then persists to Jira in the background.
 - **Assignee management** — assign or unassign issues directly from the board or detail view. The current user is highlighted with a ★ marker.
 - **Create issues & subtasks** — create new issues from the board view, and subtasks from the detail modal. Rich text descriptions with URL linking and code blocks are supported. Tab-navigable OK/Cancel buttons.
+- **Clone issues** — press `C` to clone the selected issue. Pre-fills the description, labels, and epic from the source; you only need to write a new summary.
 - **Subtask navigation** — view and select subtasks inside the detail modal; press Enter to open a nested detail view for any subtask.
 - **Copy issue key** — press `y` to copy the selected issue's key (e.g. `PROJ-123`) to the system clipboard.
 - **Copy issue URL** — press `Ctrl+Y` to copy the full Jira URL (e.g. `https://yourorg.atlassian.net/browse/PROJ-123`) to the clipboard for easy sharing.

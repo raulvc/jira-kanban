@@ -24,9 +24,10 @@ const (
 
 // createIssueState tracks the create-issue form modal.
 type createIssueState struct {
-	projectKey string
-	parentKey  string
-	types      []jira.IssueType
+	projectKey     string
+	parentKey      string
+	parentSummary  string
+	types          []jira.IssueType
 	typeIdx    int
 	summary    string
 	sumCur     int
@@ -39,6 +40,8 @@ type createIssueState struct {
 	epicName   string
 	epics      []jira.EpicItem
 	epicSel    int
+	labels     []string
+	cloneSrc   string // key of the issue being cloned (empty = fresh create)
 	field      createField
 	btnIdx     int // 0 = OK, 1 = Cancel
 	errMsg     string
@@ -65,7 +68,7 @@ func typeStyle(name string) (icon string, bg tcell.Color) {
 }
 
 func newCreateIssueState(projectKey string) *createIssueState {
-	return &createIssueState{
+	c := &createIssueState{
 		projectKey: projectKey,
 		types: []jira.IssueType{
 			{ID: "", Name: "Task"},
@@ -74,6 +77,7 @@ func newCreateIssueState(projectKey string) *createIssueState {
 		},
 		typeIdx: 0,
 	}
+	return c
 }
 
 func (c *createIssueState) isSubtask() bool { return c.parentKey != "" }
@@ -86,9 +90,10 @@ func (c *createIssueState) navCount() createField {
 func (c *createIssueState) nextField() {
 	for {
 		c.field = (c.field + 1) % c.navCount()
-		if !c.isSubtask() || c.field != cfEpic {
-			break
+		if c.isSubtask() && (c.field == cfEpic || c.field == cfType) {
+			continue
 		}
+		break
 	}
 	c.clampCur()
 }
@@ -96,9 +101,10 @@ func (c *createIssueState) nextField() {
 func (c *createIssueState) prevField() {
 	for {
 		c.field = (c.field - 1 + c.navCount()) % c.navCount()
-		if !c.isSubtask() || c.field != cfEpic {
-			break
+		if c.isSubtask() && (c.field == cfEpic || c.field == cfType) {
+			continue
 		}
+		break
 	}
 	c.clampCur()
 }
@@ -441,12 +447,20 @@ func drawCreateIssue(screen tcell.Screen, c *createIssueState, screenW, screenH 
 		epicListH = epicMaxVis
 		epicSepRow = 1
 	}
+	labelsH := 0
+	if len(c.labels) > 0 {
+		labelsH = 2
+	}
 	const maxErrLines = 3
 	errLines := 0
 	if c.errMsg != "" {
 		errLines = min(wrappedLineCount(c.errMsg, contentW-3), maxErrLines)
 	}
-	contentH := 15 + descExtra + epicListH + epicSepRow + errLines
+	parentH := 0
+	if c.isSubtask() {
+		parentH = 3
+	}
+	contentH := 15 + descExtra + epicListH + epicSepRow + labelsH + errLines + parentH
 
 	boxW := contentW + padding*2
 	boxH := contentH + padding
@@ -480,8 +494,14 @@ func drawCreateIssue(screen tcell.Screen, c *createIssueState, screenW, screenH 
 	drawBorder(screen, ox, oy, boxW, boxH, borderStyle)
 
 	cy := oy + 1
-	if c.isSubtask() {
-		drawText(screen, ox+padding, cy, " Create Subtask — "+c.parentKey+" ", titleStyle, contentW)
+	if c.cloneSrc != "" {
+		if c.isSubtask() {
+			drawText(screen, ox+padding, cy, " Clone Subtask "+c.cloneSrc+" → "+c.parentKey+": "+c.parentSummary+" ", titleStyle, contentW)
+		} else {
+			drawText(screen, ox+padding, cy, " Clone "+c.cloneSrc+" — "+c.projectKey+" ", titleStyle, contentW)
+		}
+	} else if c.isSubtask() {
+		drawText(screen, ox+padding, cy, " Create Subtask — "+c.parentKey+": "+c.parentSummary+" ", titleStyle, contentW)
 	} else {
 		drawText(screen, ox+padding, cy, " Create Issue — "+c.projectKey+" ", titleStyle, contentW)
 	}
@@ -489,10 +509,15 @@ func drawCreateIssue(screen tcell.Screen, c *createIssueState, screenW, screenH 
 	drawSep(screen, ox+padding, cy, contentW, sepStyle)
 	cy++
 
+	if c.isSubtask() {
+		cy = drawCreateParentSection(screen, c, lay, cy, labelStyle, sepStyle)
+	}
+
 	cy = drawCreateTypeSection(screen, c, lay, cy, labelStyle, activeLabelStyle, activeBorder, sepStyle)
 	cy = drawCreateSummarySection(screen, c, lay, cy, labelStyle, activeLabelStyle, inputStyle, activeInputStyle, inputPlaceholder, activeBorder, sepStyle)
 	cy = drawCreateDescSection(screen, c, lay, cy, labelStyle, activeLabelStyle, inputStyle, activeInputStyle, inputPlaceholder, activeBorder)
 	cy = drawCreateEpicSection(screen, c, lay, cy, labelStyle, activeLabelStyle, inputStyle, activeInputStyle, inputPlaceholder, activeBorder, sepStyle, bgStyle)
+	cy = drawCreateLabelsSection(screen, c, lay, cy, labelStyle, sepStyle)
 
 	if c.errMsg != "" {
 		lines := wrapText(c.errMsg, contentW-3)
@@ -510,9 +535,24 @@ func drawCreateIssue(screen tcell.Screen, c *createIssueState, screenW, screenH 
 	drawCreateButtons(screen, c, lay, bgStyle, sepStyle, borderStyle)
 }
 
+func drawCreateParentSection(screen tcell.Screen, c *createIssueState, lay createLayout, cy int, labelStyle, sepStyle tcell.Style) int {
+	drawText(screen, lay.ox+2, cy, " Parent", labelStyle, lay.contentW)
+	cy++
+	pBadge := " " + c.parentKey + ": " + truncStr(c.parentSummary, lay.contentW-6-len([]rune(c.parentKey))) + " "
+	pStyle := tcell.StyleDefault.Foreground(T().BadgeFg).Background(assigneeColor(c.parentKey)).Bold(true)
+	screen.SetContent(lay.ox+2, cy, '│', nil, tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg))
+	fillRow(screen, lay.ox+3, cy, lay.contentW-2, tcell.StyleDefault.Foreground(T().Fg).Background(T().Bg))
+	drawText(screen, lay.ox+3, cy, pBadge, pStyle, lay.contentW-2)
+	cy++
+	drawSep(screen, lay.ox+2, cy, lay.contentW, sepStyle)
+	cy++
+	return cy
+}
+
 func drawCreateTypeSection(screen tcell.Screen, c *createIssueState, lay createLayout, cy int, labelStyle, activeLabelStyle, activeBorder, sepStyle tcell.Style) int {
+	locked := c.isSubtask()
 	lStyle := labelStyle
-	if c.field == cfType {
+	if c.field == cfType && !locked {
 		lStyle = activeLabelStyle
 	}
 	drawText(screen, lay.ox+2, cy, " Type", lStyle, lay.contentW)
@@ -522,14 +562,14 @@ func drawCreateTypeSection(screen tcell.Screen, c *createIssueState, lay createL
 	badge := " " + icon + " " + c.currentTypeName() + " "
 	badgeRowBg := tcell.StyleDefault.Foreground(T().Fg).Background(T().Bg)
 	badgeRowBorderSt := tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg)
-	if c.field == cfType {
+	if c.field == cfType && !locked {
 		badgeRowBg = tcell.StyleDefault.Foreground(T().Fg).Background(T().CardSel)
 		badgeRowBorderSt = activeBorder
 	}
 	screen.SetContent(lay.ox+2, cy, '│', nil, badgeRowBorderSt)
 	fillRow(screen, lay.ox+3, cy, lay.contentW-2, badgeRowBg)
 	drawText(screen, lay.ox+3, cy, badge, bStyle, lay.contentW-2)
-	if c.field == cfType {
+	if c.field == cfType && !locked {
 		drawText(screen, lay.ox+3+len([]rune(badge))+1, cy, "\u2190/\u2192", tcell.StyleDefault.Foreground(T().Muted).Background(T().CardSel), lay.contentW-2)
 		screen.SetContent(lay.ox+2+lay.contentW-1, cy, '│', nil, badgeRowBorderSt)
 	}
@@ -636,6 +676,28 @@ func drawDescScrollbar(screen tcell.Screen, lay createLayout, descBoxY, descBoxH
 	for i := 0; i < barH && barTop+i < descBoxY+descBoxH; i++ {
 		screen.SetContent(lay.ox+2+lay.contentW-1, barTop+i, '▐', nil, tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg))
 	}
+}
+
+func drawCreateLabelsSection(screen tcell.Screen, c *createIssueState, lay createLayout, cy int, labelStyle, sepStyle tcell.Style) int {
+	if len(c.labels) == 0 {
+		return cy
+	}
+	drawText(screen, lay.ox+2, cy, " Labels", labelStyle, lay.contentW)
+	cy++
+	lx := lay.ox + 2
+	for _, label := range c.labels {
+		ls := tcell.StyleDefault.Foreground(labelColor(label)).Background(T().Panel)
+		text := " " + label + " "
+		drawn := drawText(screen, lx, cy, text, ls, lay.contentW-(lx-lay.ox-2))
+		lx += drawn + 1
+		if lx-lay.ox-2 >= lay.contentW {
+			break
+		}
+	}
+	cy++
+	drawSep(screen, lay.ox+2, cy, lay.contentW, sepStyle)
+	cy++
+	return cy
 }
 
 func drawCreateEpicSection(screen tcell.Screen, c *createIssueState, lay createLayout, cy int, labelStyle, activeLabelStyle, inputStyle, activeInputStyle, inputPlaceholder, activeBorder, sepStyle, bgStyle tcell.Style) int {

@@ -129,17 +129,19 @@ type issueEpic struct {
 
 // Card is the application-level representation of an issue on the board.
 type Card struct {
-	Key         string
-	Summary     string
-	StatusID    string
-	Status      string
-	Assignee    string
-	Labels      []string
-	Description string
-	RichDesc    []DescSeg
-	Epic        string
-	Rank        string
-	Subtasks    []Subtask
+	Key           string
+	Summary       string
+	StatusID      string
+	Status        string
+	Assignee      string
+	Labels        []string
+	Description   string
+	RichDesc      []DescSeg
+	Epic          string
+	Rank          string
+	ParentKey     string
+	ParentSummary string
+	Subtasks      []Subtask
 }
 
 // DescStyle identifies the visual style of a description segment.

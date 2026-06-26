@@ -212,9 +212,10 @@ func handleBoardRune(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		openAssigneePicker(ctx)
 		return nil
 	case 'c':
-		if ctx.state.createIssue == nil && ctx.state.projectKey != "" {
-			openCreateIssue(ctx)
-		}
+		startCreateOrClone(ctx, false)
+		return nil
+	case 'C':
+		startCreateOrClone(ctx, true)
 		return nil
 	case 'h':
 		if ctx.state.history == nil {
@@ -513,7 +514,16 @@ func handleDetailRune(ctx *appContext, d *detailState, event *tcell.EventKey) *t
 		return nil
 	case 'c':
 		if ctx.state.projectKey != "" {
-			openCreateSubtask(ctx, d.card.Key)
+			openCreateSubtask(ctx, d.card.Key, d.card.Summary)
+		}
+		return nil
+	case 'C':
+		if ctx.state.projectKey != "" {
+			key := d.card.Key
+			if len(d.card.Subtasks) > 0 && d.selectedSubtask >= 0 && d.selectedSubtask < len(d.card.Subtasks) {
+				key = d.card.Subtasks[d.selectedSubtask].Key
+			}
+			openCloneIssue(ctx, key)
 		}
 		return nil
 	case 'y':
@@ -804,6 +814,19 @@ func executeAssign(ctx *appContext, accountID, displayName, issueKey string) {
 	}()
 }
 
+func startCreateOrClone(ctx *appContext, clone bool) {
+	if ctx.state.createIssue != nil || ctx.state.projectKey == "" {
+		return
+	}
+	if clone {
+		if card := ctx.state.selectedCard(); card != nil {
+			openCloneIssue(ctx, card.Key)
+		}
+		return
+	}
+	openCreateIssue(ctx)
+}
+
 // ── create issue ───────────────────────────────────────────────────────────
 
 func openCreateIssue(ctx *appContext) {
@@ -854,9 +877,11 @@ func openCreateIssue(ctx *appContext) {
 	}()
 }
 
-func openCreateSubtask(ctx *appContext, parentKey string) {
+func openCreateSubtask(ctx *appContext, parentKey string, parentSummary string) {
 	c := newCreateIssueState(ctx.state.projectKey)
 	c.parentKey = parentKey
+	c.parentSummary = parentSummary
+	c.field = cfSummary
 	ctx.state.createIssue = c
 
 	go func() {
@@ -875,6 +900,90 @@ func openCreateSubtask(ctx *appContext, parentKey string) {
 				c.typeIdx = 0
 			}
 		})
+	}()
+}
+
+func openCloneIssue(ctx *appContext, key string) {
+	epicFreq := make(map[string]int)
+	for _, col := range ctx.state.data.Columns {
+		for _, c := range col.Issues {
+			if c.Epic != "" {
+				epicFreq[c.Epic]++
+			}
+		}
+	}
+
+	c := newCreateIssueState(ctx.state.projectKey)
+	c.cloneSrc = key
+	c.epicFreq = epicFreq
+	ctx.state.createIssue = c
+
+	go func() {
+		full, err := ctx.client.GetIssue(key)
+		ctx.app.QueueUpdateDraw(func() {
+			if ctx.state.createIssue != c {
+				return
+			}
+			if err != nil {
+				c.errMsg = err.Error(); slog.Error("clone issue failed", "error", err)
+				return
+			}
+			c.desc = full.Description
+			c.descCur = len([]rune(c.desc))
+			c.labels = full.Labels
+			if full.ParentKey != "" {
+				c.parentKey = full.ParentKey
+				c.parentSummary = full.ParentSummary
+			}
+			if full.Epic != "" {
+				c.epicName = full.Epic
+			}
+		})
+
+		isSub := full.ParentKey != ""
+		typeFetcher := ctx.client.GetIssueTypes
+		if isSub {
+			typeFetcher = ctx.client.GetSubtaskTypes
+		}
+		types, tErr := typeFetcher(c.projectKey)
+		ctx.app.QueueUpdateDraw(func() {
+			if ctx.state.createIssue != c {
+				return
+			}
+			if tErr != nil {
+				c.errMsg = tErr.Error(); slog.Error("clone issue failed", "error", tErr)
+				return
+			}
+			if len(types) > 0 {
+				sortTypesByPriority(types)
+				c.types = types
+				c.typeIdx = 0
+			}
+		})
+
+		if !isSub {
+			epics, eErr := ctx.client.SearchEpics(c.projectKey, "")
+			ctx.app.QueueUpdateDraw(func() {
+				if ctx.state.createIssue != c {
+					return
+				}
+				if eErr != nil {
+					return
+				}
+				sortEpicsByFreq(epics, epicFreq)
+				c.epics = epics
+				c.epicLoaded = true
+				if c.epicName != "" {
+					for _, e := range epics {
+						if e.Summary == c.epicName || e.Key == c.epicName {
+							c.epicKey = e.Key
+							c.epicName = e.Summary
+							break
+						}
+					}
+				}
+			})
+		}
 	}()
 }
 
@@ -981,7 +1090,11 @@ func handleCreateUp(c *createIssueState) {
 
 func handleCreateDown(c *createIssueState) {
 	if c.field == cfButtons {
-		c.field = cfType
+		if c.isSubtask() {
+			c.field = cfSummary
+		} else {
+			c.field = cfType
+		}
 		c.clampCur()
 		return
 	}
@@ -1016,7 +1129,7 @@ func handleCreateLeft(c *createIssueState) {
 		c.btnIdx = 0
 		return
 	}
-	if c.field == cfType {
+	if c.field == cfType && !c.isSubtask() {
 		c.cycleType(-1)
 		return
 	}
@@ -1042,7 +1155,7 @@ func handleCreateRight(c *createIssueState) {
 		c.btnIdx = 1
 		return
 	}
-	if c.field == cfType {
+	if c.field == cfType && !c.isSubtask() {
 		c.cycleType(1)
 		return
 	}
@@ -1161,10 +1274,11 @@ func executeCreateIssue(ctx *appContext) {
 		var result jira.CreateIssueResult
 		var err error
 		epicKey := c.epicKey
+		labels := c.labels
 		if c.isSubtask() {
-			result, err = ctx.client.CreateSubtask(pk, typeID, summary, desc, c.parentKey)
+			result, err = ctx.client.CreateSubtask(pk, typeID, summary, desc, c.parentKey, labels)
 		} else {
-			result, err = ctx.client.CreateIssue(pk, typeID, summary, desc)
+			result, err = ctx.client.CreateIssue(pk, typeID, summary, desc, labels)
 		}
 		if err == nil && epicKey != "" {
 			if linkErr := ctx.client.LinkEpic(result.Key, epicKey); linkErr != nil {

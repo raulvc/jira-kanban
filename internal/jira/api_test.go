@@ -106,7 +106,7 @@ func TestCreateIssue(t *testing.T) {
 	c := fake.client()
 	must := require.New(t)
 	is := assert.New(t)
-	result, err := c.CreateIssue("PROJ", "1", "New issue", "description text")
+	result, err := c.CreateIssue("PROJ", "1", "New issue", "description text", nil)
 	must.NoError(err)
 	is.Equal("PROJ-100", result.Key)
 }
@@ -129,7 +129,7 @@ func TestCreateIssue_NoDescription(t *testing.T) {
 	c := fake.client()
 	must := require.New(t)
 	is := assert.New(t)
-	result, err := c.CreateIssue("PROJ", "1", "Title only", "")
+	result, err := c.CreateIssue("PROJ", "1", "Title only", "", nil)
 	must.NoError(err)
 	is.Equal("PROJ-101", result.Key)
 }
@@ -152,7 +152,7 @@ func TestCreateSubtask(t *testing.T) {
 	c := fake.client()
 	must := require.New(t)
 	is := assert.New(t)
-	result, err := c.CreateSubtask("PROJ", "2", "Sub task", "desc", "PROJ-1")
+	result, err := c.CreateSubtask("PROJ", "2", "Sub task", "desc", "PROJ-1", nil)
 	must.NoError(err)
 	is.Equal("PROJ-200", result.Key)
 }

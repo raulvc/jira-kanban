@@ -89,7 +89,7 @@ func (c *Client) GetSubtaskTypes(projectKey string) ([]IssueType, error) {
 }
 
 // CreateSubtask creates a new subtask under a parent issue and returns its key.
-func (c *Client) CreateSubtask(projectKey, issueTypeID, summary, description, parentKey string) (CreateIssueResult, error) {
+func (c *Client) CreateSubtask(projectKey, issueTypeID, summary, description, parentKey string, labels []string) (CreateIssueResult, error) {
 	u := fmt.Sprintf("%s/rest/api/3/issue", c.BaseURL)
 	fields := map[string]any{
 		"project":   map[string]string{"key": projectKey},
@@ -100,6 +100,9 @@ func (c *Client) CreateSubtask(projectKey, issueTypeID, summary, description, pa
 	if description != "" {
 		fields["description"] = descToADF(description)
 	}
+	if len(labels) > 0 {
+		fields["labels"] = labels
+	}
 	body := map[string]any{"fields": fields}
 	var result CreateIssueResult
 	if err := c.postJSONResponse(u, body, &result); err != nil {
@@ -109,7 +112,7 @@ func (c *Client) CreateSubtask(projectKey, issueTypeID, summary, description, pa
 }
 
 // CreateIssue creates a new Jira issue and returns its key.
-func (c *Client) CreateIssue(projectKey, issueTypeID, summary, description string) (CreateIssueResult, error) {
+func (c *Client) CreateIssue(projectKey, issueTypeID, summary, description string, labels []string) (CreateIssueResult, error) {
 	u := fmt.Sprintf("%s/rest/api/3/issue", c.BaseURL)
 	fields := map[string]any{
 		"project":   map[string]string{"key": projectKey},
@@ -118,6 +121,9 @@ func (c *Client) CreateIssue(projectKey, issueTypeID, summary, description strin
 	}
 	if description != "" {
 		fields["description"] = descToADF(description)
+	}
+	if len(labels) > 0 {
+		fields["labels"] = labels
 	}
 	body := map[string]any{"fields": fields}
 	var result CreateIssueResult

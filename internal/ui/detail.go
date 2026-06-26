@@ -77,7 +77,7 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 
 	closeY := oy + boxH - 2
 	closeStyle := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
-	closeText := " Esc/q close • a assign • t transition • c subtask • y copy key • ^Y copy url "
+	closeText := " Esc/q close • a assign • t transition • c subtask • C clone • y copy key • ^Y copy url "
 	if d.isSubDetail {
 		closeText = " Esc/q back "
 	}
@@ -105,6 +105,9 @@ func detailContentHeight(d *detailState, contentW int) int {
 	contentH++ // blank
 	contentH++ // status
 	contentH++ // assignee
+	if d.card.ParentKey != "" {
+		contentH++
+	}
 	if d.card.Epic != "" {
 		contentH++
 	}
@@ -158,6 +161,14 @@ func drawDetailHeader(screen tcell.Screen, d *detailState, l *detailLayout, cy i
 	}
 	drawText(screen, l.ox+l.padding+10, cy, assigneeText, assigneeStyle, l.maxCW-10)
 	cy++
+
+	if d.card.ParentKey != "" {
+		parentText := truncStr(d.card.ParentKey+": "+d.card.ParentSummary, l.maxCW-8)
+		drawText(screen, l.ox+l.padding, cy, "Parent: ", l.keyStyle, l.maxCW)
+		pStyle := tcell.StyleDefault.Foreground(T().BadgeFg).Background(assigneeColor(d.card.ParentKey)).Bold(true)
+		drawText(screen, l.ox+l.padding+8, cy, " "+parentText+" ", pStyle, l.maxCW-8)
+		cy++
+	}
 
 	if d.card.Epic != "" {
 		drawText(screen, l.ox+l.padding, cy, "Epic: ", l.keyStyle, l.maxCW)

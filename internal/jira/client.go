@@ -114,7 +114,7 @@ func (c *Client) GetIssue(key string) (Card, error) {
 	if err := c.getJSON(u, &resp); err != nil {
 		return Card{}, fmt.Errorf("get issue %s: %w", key, err)
 	}
-	return Card{
+	card := Card{
 		Key:         resp.Key,
 		Summary:     resp.Fields.Summary,
 		StatusID:    strings.TrimSpace(resp.Fields.Status.ID),
@@ -125,7 +125,12 @@ func (c *Client) GetIssue(key string) (Card, error) {
 		RichDesc:   ParseRichDesc(resp.Fields.Description),
 		Epic:        epicName(resp),
 		Subtasks:    parseSubtasks(resp),
-	}, nil
+	}
+	if resp.Fields.Parent != nil {
+		card.ParentKey = resp.Fields.Parent.Key
+		card.ParentSummary = resp.Fields.Parent.Fields.Summary
+	}
+	return card, nil
 }
 
 func (c *Client) getJSON(rawURL string, out any) error {
