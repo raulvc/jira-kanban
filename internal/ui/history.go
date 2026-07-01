@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -225,4 +226,95 @@ func relativeTime(t time.Time) string {
 		return "yesterday"
 	}
 	return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+}
+// ── history ────────────────────────────────────────────────────────────────
+
+func openHistory(ctx *appContext) {
+	h := &historyState{loading: true}
+	ctx.state.history = h
+
+	go func() {
+		items, err := ctx.client.SearchRecentActivity(ctx.state.accountID, historyDays)
+		ctx.app.QueueUpdateDraw(func() {
+			if ctx.state.history != h {
+				return
+			}
+			h.loading = false
+			if err != nil {
+				h.err = err.Error(); slog.Error("history load failed", "error", err)
+				return
+			}
+			h.items = items
+		})
+	}()
+}
+
+func handleHistoryInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
+	h := ctx.state.history
+	switch event.Key() {
+	case tcell.KeyEscape:
+		ctx.state.history = nil
+		return nil
+	case tcell.KeyRune:
+		if event.Rune() == 'q' {
+			ctx.state.history = nil
+			return nil
+		}
+	case tcell.KeyUp:
+		if h.selected > 0 {
+			h.selected--
+		}
+		return nil
+	case tcell.KeyDown:
+		if h.selected < len(h.items)-1 {
+			h.selected++
+		}
+		return nil
+	case tcell.KeyPgUp:
+		h.selected = max(0, h.selected-10)
+		return nil
+	case tcell.KeyPgDn:
+		h.selected = min(len(h.items)-1, h.selected+10)
+		return nil
+	case tcell.KeyHome:
+		h.selected = 0
+		return nil
+	case tcell.KeyEnd:
+		h.selected = max(0, len(h.items)-1)
+		return nil
+	case tcell.KeyEnter:
+		if h.selected >= 0 && h.selected < len(h.items) {
+			key := h.items[h.selected].Key
+			summary := h.items[h.selected].Summary
+			ctx.state.history = nil
+			ctx.state.detail = &detailState{
+				card: jira.Card{
+					Key:     key,
+					Summary: summary,
+				},
+				loading: true,
+			}
+			go func() {
+				full, err := ctx.client.GetIssue(key)
+				ctx.app.QueueUpdateDraw(func() {
+					d := ctx.state.detail
+					if d == nil || d.card.Key != key {
+						return
+					}
+					if err != nil {
+						d.loading = false
+						d.err = err.Error(); slog.Error("detail load failed", "key", d.card.Key, "error", err)
+						return
+					}
+					d.card = full
+					d.loading = false
+				})
+			}()
+		}
+		return nil
+	case tcell.KeyCtrlC:
+		ctx.app.Stop()
+		return nil
+	}
+	return nil
 }

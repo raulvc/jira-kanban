@@ -98,11 +98,14 @@ type Subtask struct {
 	Assignee string
 }
 
-// issueParent is the parent link returned for sub-tasks.
+// issueParent is the parent link returned for sub-tasks and epic children.
 type issueParent struct {
 	Key    string `json:"key"`
 	Fields struct {
-		Summary string `json:"summary"`
+		Summary   string `json:"summary"`
+		IssueType struct {
+			Name string `json:"name"`
+		} `json:"issuetype"`
 	} `json:"fields"`
 }
 
@@ -141,6 +144,7 @@ type Card struct {
 	Rank          string
 	ParentKey     string
 	ParentSummary string
+	ParentIsEpic  bool
 	Subtasks      []Subtask
 }
 

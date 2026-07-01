@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"fmt"
+	"log/slog"
 	"sort"
 	"time"
 
@@ -262,4 +264,136 @@ func drawAssigneePicker(screen tcell.Screen, a *assigneePickerState, screenW, sc
 	drawText(screen, btnX, btnY, unassignText, unassignStyle, contentW)
 	btnX += len([]rune(unassignText)) + gap
 	drawText(screen, btnX, btnY, cancelText, cancelStyle, contentW)
+}// ── assignee picker ────────────────────────────────────────────────────────
+
+func openAssigneePicker(ctx *appContext) {
+	var card *jira.Card
+	if ctx.state.detail != nil {
+		card = &ctx.state.detail.card
+	} else {
+		card = ctx.state.selectedCard()
+	}
+	if card == nil {
+		return
+	}
+	issueKey := card.Key
+
+	picker := newAssigneePickerState(issueKey, card.Assignee, ctx.state.currentUser, ctx.state.data)
+	ctx.state.assigneePicker = picker
+}
+
+func startAssigneeSearch(ctx *appContext, a *assigneePickerState) {
+	if a.debounce != nil {
+		a.debounce.Stop()
+	}
+	query := a.query
+	issueKey := a.issueKey
+	a.debounce = time.AfterFunc(100*time.Millisecond, func() {
+		users, err := ctx.client.SearchAssignableUsers(issueKey, query)
+		ctx.app.QueueUpdateDraw(func() {
+			p := ctx.state.assigneePicker
+			if p == nil || p != a {
+				return
+			}
+			if err != nil {
+				p.errMsg = err.Error(); slog.Error("assignee picker failed", "error", err)
+				return
+			}
+			p.mergeAPIResults(users)
+		})
+	})
+}
+
+func handleAssigneePickerInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
+	a := ctx.state.assigneePicker
+	switch event.Key() {
+	case tcell.KeyEscape:
+		a.stopDebounce()
+		ctx.state.assigneePicker = nil
+		return nil
+	case tcell.KeyUp:
+		a.moveSelection(-1)
+		return nil
+	case tcell.KeyDown:
+		a.moveSelection(1)
+		return nil
+	case tcell.KeyEnter:
+		items := a.filtered()
+		if a.selected >= 0 && a.selected < len(items) {
+			selectedUser := items[a.selected]
+			a.stopDebounce()
+			ctx.state.assigneePicker = nil
+			executeAssign(ctx, selectedUser.AccountID, selectedUser.DisplayName, a.issueKey)
+		}
+		return nil
+	case tcell.KeyCtrlU:
+		a.stopDebounce()
+		ctx.state.assigneePicker = nil
+		executeAssign(ctx, "", "Unassigned", a.issueKey)
+		return nil
+	case tcell.KeyCtrlC:
+		ctx.app.Stop()
+		return nil
+	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		a.backspace()
+		if len(a.query) < 3 {
+			a.resetToBoardUsers()
+		}
+		return nil
+	case tcell.KeyRune:
+		a.typeRune(event.Rune())
+		if len(a.query) >= 3 {
+			startAssigneeSearch(ctx, a)
+		} else {
+			a.resetToBoardUsers()
+		}
+		return nil
+	}
+	return nil
+}
+
+func executeAssign(ctx *appContext, accountID, displayName, issueKey string) {
+	ctx.state.updateAssignee(issueKey, displayName)
+	ctx.state.statusMsg = fmt.Sprintf(" Assigning %s → %s…", issueKey, displayName)
+
+	go func() {
+		aid := accountID
+		if aid == "" && displayName == "Unassigned" {
+			aid = "-1"
+		} else if aid == "" && displayName != "Unassigned" {
+			users, err := ctx.client.SearchAssignableUsers(issueKey, displayName)
+			if err != nil {
+				ctx.app.QueueUpdateDraw(func() {
+					ctx.state.statusMsg = fmt.Sprintf(" Error: %s", err.Error())
+					startSync(ctx)
+				})
+				return
+			}
+			for _, u := range users {
+				if u.DisplayName == displayName {
+					aid = u.AccountID
+					break
+				}
+			}
+			if aid == "" {
+				ctx.app.QueueUpdateDraw(func() {
+					ctx.state.statusMsg = fmt.Sprintf(" Error: user %q not found", displayName)
+					startSync(ctx)
+				})
+				return
+			}
+		}
+		err := ctx.client.AssignIssue(issueKey, aid)
+		if err != nil {
+			ctx.app.QueueUpdateDraw(func() {
+				ctx.state.statusMsg = fmt.Sprintf(" Error: %s", err.Error())
+				startSync(ctx)
+			})
+			return
+		}
+		ctx.client.UpdateCachedAssignee(ctx.boardID, issueKey, displayName)
+		ctx.app.QueueUpdateDraw(func() {
+			ctx.state.statusMsg = fmt.Sprintf(" %s → %s", issueKey, displayName)
+		})
+	}()
 }

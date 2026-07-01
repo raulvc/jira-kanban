@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"log/slog"
+
 	"github.com/gdamore/tcell/v2"
 
 	"github.com/raulvc/jira-kanban/internal/jira"
@@ -77,7 +79,7 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 
 	closeY := oy + boxH - 2
 	closeStyle := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
-	closeText := " Esc/q close • a assign • t transition • c subtask • C clone • y copy key • ^Y copy url "
+	closeText := " Esc/q close • e edit • a assign • t transition • c subtask • C clone • y copy key • ^Y copy url "
 	if d.isSubDetail {
 		closeText = " Esc/q back "
 	}
@@ -105,7 +107,7 @@ func detailContentHeight(d *detailState, contentW int) int {
 	contentH++ // blank
 	contentH++ // status
 	contentH++ // assignee
-	if d.card.ParentKey != "" {
+	if d.card.ParentKey != "" && !d.card.ParentIsEpic {
 		contentH++
 	}
 	if d.card.Epic != "" {
@@ -162,7 +164,7 @@ func drawDetailHeader(screen tcell.Screen, d *detailState, l *detailLayout, cy i
 	drawText(screen, l.ox+l.padding+10, cy, assigneeText, assigneeStyle, l.maxCW-10)
 	cy++
 
-	if d.card.ParentKey != "" {
+	if d.card.ParentKey != "" && !d.card.ParentIsEpic {
 		parentText := truncStr(d.card.ParentKey+": "+d.card.ParentSummary, l.maxCW-8)
 		drawText(screen, l.ox+l.padding, cy, "Parent: ", l.keyStyle, l.maxCW)
 		pStyle := tcell.StyleDefault.Foreground(T().BadgeFg).Background(assigneeColor(d.card.ParentKey)).Bold(true)
@@ -523,4 +525,207 @@ func drawRichWrappedText(screen tcell.Screen, segs []jira.DescSeg, x, y, width, 
 		}
 		cy++
 	}
+}
+// ── handlers ────────────────────────────────────────────────────────────────
+
+func openIssueDetail(ctx *appContext) {
+	card := ctx.state.selectedCard()
+	if card == nil {
+		return
+	}
+	key := card.Key
+	ctx.state.detail = &detailState{
+		card:    *card,
+		loading: true,
+	}
+	go func() {
+		full, err := ctx.client.GetIssue(key)
+		ctx.app.QueueUpdateDraw(func() {
+			d := ctx.state.detail
+			if d == nil || d.card.Key != key {
+				return
+			}
+			if err != nil {
+				d.loading = false
+				d.err = err.Error(); slog.Error("detail load failed", "key", d.card.Key, "error", err)
+				return
+			}
+			d.card = full
+			d.loading = false
+		})
+	}()
+}
+
+func handleDetailInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
+	d := ctx.state.detail
+
+	if d.subDetail != nil {
+		return handleSubDetailInput(ctx, d.subDetail, event)
+	}
+
+	hasSubtasks := len(d.card.Subtasks) > 0
+
+	switch event.Key() {
+	case tcell.KeyEscape:
+		ctx.state.detail = nil
+		return nil
+	case tcell.KeyRune:
+		return handleDetailRune(ctx, d, event)
+	case tcell.KeyUp:
+		handleDetailUp(d, hasSubtasks)
+		return nil
+	case tcell.KeyDown:
+		handleDetailDown(d, hasSubtasks)
+		return nil
+	case tcell.KeyEnter:
+		if hasSubtasks && d.selectedSubtask < len(d.card.Subtasks) {
+			st := d.card.Subtasks[d.selectedSubtask]
+			openSubDetail(ctx, d, st.Key)
+			return nil
+		}
+	case tcell.KeyPgUp:
+		d.scroll = max(0, d.scroll-max(1, d.viewH-1))
+		return nil
+	case tcell.KeyPgDn:
+		d.scroll = min(d.maxScroll, d.scroll+max(1, d.viewH-1))
+		return nil
+	case tcell.KeyHome:
+		d.scroll = 0
+		return nil
+	case tcell.KeyEnd:
+		d.scroll = d.maxScroll
+		return nil
+	case tcell.KeyCtrlC:
+		ctx.app.Stop()
+		return nil
+	case tcell.KeyCtrlY:
+		copyIssueURLToClipboard(ctx)
+		return nil
+	}
+	return nil
+}
+
+func handleDetailRune(ctx *appContext, d *detailState, event *tcell.EventKey) *tcell.EventKey {
+	switch event.Rune() {
+	case 'q':
+		ctx.state.detail = nil
+		return nil
+	case 'a':
+		openAssigneePicker(ctx)
+		return nil
+	case 't':
+		openTransitionModal(ctx)
+		return nil
+	case 'c':
+		if ctx.state.projectKey != "" {
+			openCreateSubtask(ctx, d.card.Key, d.card.Summary)
+		}
+		return nil
+	case 'C':
+		if ctx.state.projectKey != "" {
+			key := d.card.Key
+			if len(d.card.Subtasks) > 0 && d.selectedSubtask >= 0 && d.selectedSubtask < len(d.card.Subtasks) {
+				key = d.card.Subtasks[d.selectedSubtask].Key
+			}
+			openCloneIssue(ctx, key)
+		}
+		return nil
+	case 'y':
+		copyKeyToClipboard(ctx)
+		return nil
+	case 'e':
+		openEditIssue(ctx, d.card)
+		return nil
+	}
+	return nil
+}
+
+func handleDetailUp(d *detailState, hasSubtasks bool) {
+	if hasSubtasks && d.selectedSubtask > 0 {
+		d.selectedSubtask--
+		return
+	}
+	if d.scroll > 0 {
+		d.scroll--
+	}
+}
+
+func handleDetailDown(d *detailState, hasSubtasks bool) {
+	if hasSubtasks && d.selectedSubtask < len(d.card.Subtasks)-1 {
+		d.selectedSubtask++
+		return
+	}
+	if d.scroll < d.maxScroll {
+		d.scroll++
+	}
+}
+
+func handleSubDetailInput(ctx *appContext, d *detailState, event *tcell.EventKey) *tcell.EventKey {
+	switch event.Key() {
+	case tcell.KeyEscape:
+		ctx.state.detail.subDetail = nil
+		return nil
+	case tcell.KeyRune:
+		if event.Rune() == 'q' {
+			ctx.state.detail.subDetail = nil
+			return nil
+		}
+		if event.Rune() == 'e' {
+			openEditIssue(ctx, d.card)
+			return nil
+		}
+	case tcell.KeyUp:
+		if d.scroll > 0 {
+			d.scroll--
+		}
+		return nil
+	case tcell.KeyDown:
+		if d.scroll < d.maxScroll {
+			d.scroll++
+		}
+		return nil
+	case tcell.KeyPgUp:
+		d.scroll = max(0, d.scroll-max(1, d.viewH-1))
+		return nil
+	case tcell.KeyPgDn:
+		d.scroll = min(d.maxScroll, d.scroll+max(1, d.viewH-1))
+		return nil
+	case tcell.KeyHome:
+		d.scroll = 0
+		return nil
+	case tcell.KeyEnd:
+		d.scroll = d.maxScroll
+		return nil
+	case tcell.KeyCtrlC:
+		ctx.app.Stop()
+		return nil
+	case tcell.KeyCtrlY:
+		copyIssueURLToClipboard(ctx)
+		return nil
+	}
+	return nil
+}
+
+func openSubDetail(ctx *appContext, parent *detailState, key string) {
+	sub := &detailState{
+		card:        jira.Card{Key: key},
+		loading:     true,
+		isSubDetail: true,
+	}
+	parent.subDetail = sub
+	go func() {
+		full, err := ctx.client.GetIssue(key)
+		ctx.app.QueueUpdateDraw(func() {
+			if parent.subDetail != sub {
+				return
+			}
+			if err != nil {
+				sub.loading = false
+				sub.err = err.Error(); slog.Error("sub-detail load failed", "key", sub.card.Key, "error", err)
+				return
+			}
+			sub.card = full
+			sub.loading = false
+		})
+	}()
 }

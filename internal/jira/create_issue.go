@@ -133,10 +133,9 @@ func (c *Client) CreateIssue(projectKey, issueTypeID, summary, description strin
 	return result, nil
 }
 
-// LinkEpic sets the parent of an existing issue to the given epic key using
-// the Jira Cloud unified parent field.  If the project uses the old hierarchy
-// this may silently fail — the issue still appears on the board, just without
-// an epic.
+// LinkEpic links an issue to an epic using the Jira Cloud unified parent
+// field.  Jira Cloud has consolidated the old Epic Link custom field into
+// the parent field for all project types.
 func (c *Client) LinkEpic(issueKey, epicKey string) error {
 	u := fmt.Sprintf("%s/rest/api/3/issue/%s", c.BaseURL, issueKey)
 	body := map[string]any{
@@ -147,6 +146,56 @@ func (c *Client) LinkEpic(issueKey, epicKey string) error {
 	err := c.putJSON(u, body)
 	if err != nil {
 		return fmt.Errorf("link epic %s to %s: %w", epicKey, issueKey, err)
+	}
+	return nil
+}
+
+// ClearEpic removes the epic/parent link from a standard issue.
+// Sets fields.parent to null which works for both team-managed and
+// company-managed projects in Jira Cloud (the old Epic Link custom field
+// has been consolidated into the parent field).
+func (c *Client) ClearEpic(issueKey string) error {
+	u := fmt.Sprintf("%s/rest/api/3/issue/%s", c.BaseURL, issueKey)
+	body := map[string]any{
+		"fields": map[string]any{
+			"parent": nil,
+		},
+	}
+	if err := c.putJSON(u, body); err != nil {
+		return fmt.Errorf("clear epic for %s: %w", issueKey, err)
+	}
+	return nil
+}
+
+// IssueEdit describes which fields to update on an existing issue.
+// Nil pointer fields are skipped (not changed); non-nil fields are sent
+// even if the value is empty (to clear the field).
+type IssueEdit struct {
+	Summary     *string
+	Description *string
+	Labels      *[]string
+}
+
+// EditIssue updates only the fields specified in the IssueEdit struct.
+// Fields with nil pointers are omitted from the request.
+func (c *Client) EditIssue(key string, edit IssueEdit) error {
+	u := fmt.Sprintf("%s/rest/api/3/issue/%s", c.BaseURL, key)
+	fields := map[string]any{}
+	if edit.Summary != nil {
+		fields["summary"] = *edit.Summary
+	}
+	if edit.Description != nil {
+		fields["description"] = descToADF(*edit.Description)
+	}
+	if edit.Labels != nil {
+		fields["labels"] = *edit.Labels
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	body := map[string]any{"fields": fields}
+	if err := c.putJSON(u, body); err != nil {
+		return fmt.Errorf("edit issue %s: %w", key, err)
 	}
 	return nil
 }

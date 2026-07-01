@@ -129,6 +129,7 @@ func (c *Client) GetIssue(key string) (Card, error) {
 	if resp.Fields.Parent != nil {
 		card.ParentKey = resp.Fields.Parent.Key
 		card.ParentSummary = resp.Fields.Parent.Fields.Summary
+		card.ParentIsEpic = strings.EqualFold(resp.Fields.Parent.Fields.IssueType.Name, "Epic")
 	}
 	return card, nil
 }

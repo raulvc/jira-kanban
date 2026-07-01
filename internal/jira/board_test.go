@@ -637,13 +637,28 @@ func TestEpicName(t *testing.T) {
 			"Platform Auth",
 		},
 		{
-			"epic via Parent field",
+			"epic via Parent field (parent is Epic type)",
 			func() issue {
 				iss := issue{Key: "P-2"}
-				iss.Fields.Parent = &issueParent{Key: "EP-2", Fields: struct{ Summary string `json:"summary"` }{Summary: "Migration"}}
+				iss.Fields.Parent = &issueParent{Key: "EP-2", Fields: struct {
+					Summary   string `json:"summary"`
+					IssueType struct{ Name string `json:"name"` } `json:"issuetype"`
+				}{Summary: "Migration", IssueType: struct{ Name string `json:"name"` }{Name: "Epic"}}}
 				return iss
 			}(),
 			"Migration",
+		},
+		{
+			"parent is not Epic type",
+			func() issue {
+				iss := issue{Key: "P-2b"}
+				iss.Fields.Parent = &issueParent{Key: "ST-1", Fields: struct {
+					Summary   string `json:"summary"`
+					IssueType struct{ Name string `json:"name"` } `json:"issuetype"`
+				}{Summary: "Story summary", IssueType: struct{ Name string `json:"name"` }{Name: "Story"}}}
+				return iss
+			}(),
+			"",
 		},
 		{
 			"no epic",

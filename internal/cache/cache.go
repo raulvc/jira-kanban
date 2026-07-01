@@ -132,6 +132,28 @@ func (s *Store) UpdateAssignee(key, assignee string) {
 	s.Issues[key] = e
 }
 
+// UpdateIssue patches specific fields of a cached issue.
+// Only non-empty field values are applied.
+func (s *Store) UpdateIssue(key string, summary, description *string, labels *[]string, epic *string) {
+	e, ok := s.Issues[key]
+	if !ok {
+		return
+	}
+	if summary != nil {
+		e.Summary = *summary
+	}
+	if description != nil {
+		e.Description = *description
+	}
+	if labels != nil {
+		e.Labels = *labels
+	}
+	if epic != nil {
+		e.Epic = *epic
+	}
+	s.Issues[key] = e
+}
+
 // UpsertEntry inserts or updates a single entry without advancing FetchedAt.
 // Used to inject a newly created issue so that the next incremental sync
 // does not skip over it.

@@ -318,6 +318,17 @@ func (c *Client) UpdateCachedStatus(boardID int, issueKey, statusID, statusName 
 	_ = store.Save()
 }
 
+// UpdateCachedIssue persists edited fields to the cache file
+// so that subsequent syncs don't revert an optimistic UI update.
+func (c *Client) UpdateCachedIssue(boardID int, issueKey string, summary, description *string, labels *[]string, epic *string) {
+	store, err := cache.Load(boardID)
+	if err != nil {
+		return
+	}
+	store.UpdateIssue(issueKey, summary, description, labels, epic)
+	_ = store.Save()
+}
+
 // UpdateCachedAssignee persists an assignee change to the cache file
 // so that subsequent syncs don't revert an optimistic UI update.
 func (c *Client) UpdateCachedAssignee(boardID int, issueKey, assignee string) {
@@ -504,7 +515,7 @@ func (c *Client) fetchIssuesByKeys(keys []string, onProgress func(fetched int)) 
 			jql := "key in (" + strings.Join(batch, ",") + ")"
 			u := fmt.Sprintf("%s/rest/api/3/search/jql", c.BaseURL)
 
-			fields := []string{"summary", "status", "assignee", "labels"}
+			fields := []string{"summary", "status", "assignee", "labels", "epic", "parent"}
 			if c.RankFieldID > 0 {
 				fields = append(fields, fmt.Sprintf("customfield_%d", c.RankFieldID))
 			}
@@ -822,7 +833,7 @@ func epicName(iss issue) string {
 	if iss.Fields.Epic != nil && iss.Fields.Epic.Name != "" {
 		return iss.Fields.Epic.Name
 	}
-	if iss.Fields.Parent != nil && iss.Fields.Parent.Key != "" {
+	if iss.Fields.Parent != nil && strings.EqualFold(iss.Fields.Parent.Fields.IssueType.Name, "Epic") {
 		return iss.Fields.Parent.Fields.Summary
 	}
 	return ""

@@ -190,6 +190,25 @@ func TestLinkEpic_Error(t *testing.T) {
 	assert.Error(t, c.LinkEpic("PROJ-1", "EPIC-1"), "expected error for 400")
 }
 
+func TestClearEpic(t *testing.T) {
+	fake := newFakeJira()
+	defer fake.close()
+
+	var receivedBody map[string]any
+	fake.handle("PUT /rest/api/3/issue/PROJ-1", func(w http.ResponseWriter, r *http.Request) {
+		must := require.New(t)
+		must.NoError(json.NewDecoder(r.Body).Decode(&receivedBody))
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	c := fake.client()
+	must := require.New(t)
+	is := assert.New(t)
+	must.NoError(c.ClearEpic("PROJ-1"))
+	fields := receivedBody["fields"].(map[string]any)
+	is.Nil(fields["parent"])
+}
+
 func TestGetCurrentUser(t *testing.T) {
 	fake := newFakeJira()
 	defer fake.close()

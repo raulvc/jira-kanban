@@ -31,6 +31,7 @@ type boardState struct {
 	detail         *detailState
 	assigneePicker *assigneePickerState
 	createIssue    *createIssueState
+	editIssue      *editIssueState
 	history        *historyState
 	memberFilter   string
 	epicFilterVal  string
@@ -188,6 +189,56 @@ func (s *boardState) updateAssignee(issueKey, displayName string) {
 	}
 }
 
+// updateIssue optimistically patches edited fields on the given issue
+// in the board data and the detail modal (if open).
+func (s *boardState) updateIssue(issueKey string, summary, description *string, labels *[]string, epic *string) {
+	for ci := range s.data.Columns {
+		for ii := range s.data.Columns[ci].Issues {
+			if s.data.Columns[ci].Issues[ii].Key == issueKey {
+				c := &s.data.Columns[ci].Issues[ii]
+				if summary != nil {
+					c.Summary = *summary
+				}
+				if description != nil {
+					c.Description = *description
+					c.RichDesc = nil
+				}
+				if labels != nil {
+					c.Labels = *labels
+				}
+				if epic != nil {
+					c.Epic = *epic
+					if *epic == "" && c.ParentIsEpic {
+						c.ParentKey = ""
+						c.ParentSummary = ""
+						c.ParentIsEpic = false
+					}
+				}
+			}
+		}
+	}
+	if s.detail != nil && s.detail.card.Key == issueKey {
+		if summary != nil {
+			s.detail.card.Summary = *summary
+		}
+		if description != nil {
+			s.detail.card.Description = *description
+			s.detail.card.RichDesc = nil
+		}
+		if labels != nil {
+			s.detail.card.Labels = *labels
+		}
+		if epic != nil {
+			s.detail.card.Epic = *epic
+			if *epic == "" && s.detail.card.ParentIsEpic {
+				s.detail.card.ParentKey = ""
+				s.detail.card.ParentSummary = ""
+				s.detail.card.ParentIsEpic = false
+			}
+		}
+	}
+}
+
 func (s *boardState) reload(data jira.Board) {
 	s.data = data
 	if s.colIdx >= len(data.Columns) {
@@ -325,6 +376,9 @@ func drawBoard(screen tcell.Screen, s *boardState, boardID, x, y, width, height 
 	if s.createIssue != nil {
 		drawCreateIssue(screen, s.createIssue, width, height, s.currentUser)
 	}
+	if s.editIssue != nil {
+		drawEditIssue(screen, s.editIssue, width, height)
+	}
 	if s.history != nil {
 		drawHistoryModal(screen, s.history, width, height)
 	}
@@ -400,7 +454,7 @@ func drawHelpBar(screen tcell.Screen, x, y, width int) {
 	style := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
 	fillRow(screen, x, y, width, style)
 	drawText(screen, x, y,
-		" ←/→ cols • ↑/↓ cards • f filter • e epic • a assign • c create • C clone • h history • t transition • o browser • y copy key • ^Y copy url • r refresh • + theme • q quit",
+		" ←/→ cols • ↑/↓ cards • e edit • f filter • ^E epic • a assign • c create • C clone • h history • t transition • o browser • y copy key • ^Y copy url • r refresh • + theme • q quit",
 		style, width)
 }
 
@@ -596,4 +650,145 @@ func drawCardFooter(screen tcell.Screen, card jira.Card, style tcell.Style, x, l
 	if remaining := w - 4 - kw - 2; remaining > 0 {
 		drawText(screen, x+3+kw+2, lineY, assignee, style.Foreground(assigneeColor(card.Assignee)), remaining)
 	}
+}
+// ── board input ─────────────────────────────────────────────────────────────
+
+func handleBoardInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
+	switch event.Key() {
+	case tcell.KeyCtrlC:
+		ctx.app.Stop()
+		return nil
+	case tcell.KeyCtrlY:
+		copyIssueURLToClipboard(ctx)
+		return nil
+	case tcell.KeyEscape:
+		if ctx.state.memberFilter != "" {
+			ctx.state.memberFilter = ""
+			ctx.state.clampSelection()
+		}
+		if ctx.state.epicFilterVal != "" {
+			ctx.state.epicFilterVal = ""
+			ctx.state.clampSelection()
+		}
+		return nil
+	case tcell.KeyLeft:
+		ctx.state.moveColumn(-1)
+		return nil
+	case tcell.KeyRight:
+		ctx.state.moveColumn(1)
+		return nil
+	case tcell.KeyUp:
+		ctx.state.moveCard(-1)
+		return nil
+	case tcell.KeyDown:
+		ctx.state.moveCard(1)
+		return nil
+	case tcell.KeyHome:
+		ctx.state.jumpCard(false)
+		return nil
+	case tcell.KeyEnd:
+		ctx.state.jumpCard(true)
+		return nil
+	case tcell.KeyEnter:
+		openIssueDetail(ctx)
+		return nil
+	case tcell.KeyCtrlE:
+		if ctx.state.epicFilter == nil {
+			ctx.state.epicFilter = newEpicFilterState(ctx.state.data)
+		}
+		return nil
+	case tcell.KeyRune:
+		return handleBoardRune(ctx, event)
+	}
+	return event
+}
+
+func handleBoardRune(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
+	switch event.Rune() {
+	case 'q':
+		ctx.app.Stop()
+		return nil
+	case 'o':
+		openIssueBrowser(ctx)
+		return nil
+	case 'r':
+		if !ctx.state.syncing {
+			refreshBoard(ctx)
+		}
+		return nil
+	case 't':
+		if !ctx.state.syncing {
+			openTransitionModal(ctx)
+		}
+		return nil
+	case 'f':
+		if ctx.state.filter == nil {
+			ctx.state.filter = newFilterState(ctx.state.data)
+		}
+		return nil
+	case 'e':
+		if card := ctx.state.selectedCard(); card != nil {
+			openEditIssue(ctx, *card)
+		}
+		return nil
+	case 'a':
+		openAssigneePicker(ctx)
+		return nil
+	case 'c':
+		startCreateOrClone(ctx, false)
+		return nil
+	case 'C':
+		startCreateOrClone(ctx, true)
+		return nil
+	case 'h':
+		if ctx.state.history == nil {
+			openHistory(ctx)
+		}
+		return nil
+	case 'y':
+		copyKeyToClipboard(ctx)
+		return nil
+	case '+':
+		name := cycleTheme()
+		ctx.state.statusMsg = fmt.Sprintf(" Theme: %s", name)
+		saveThemePrefs()
+		return nil
+	}
+	return event
+}
+
+// ── modal input ─────────────────────────────────────────────────────────────
+
+func handleModalInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
+	m := ctx.state.modal
+	switch event.Key() {
+	case tcell.KeyEscape:
+		ctx.state.modal = nil
+		return nil
+	case tcell.KeyUp:
+		m.moveSelection(-1)
+		return nil
+	case tcell.KeyDown:
+		m.moveSelection(1)
+		return nil
+	case tcell.KeyEnter:
+		executeTransition(ctx)
+		return nil
+	case tcell.KeyCtrlC:
+		ctx.app.Stop()
+		return nil
+	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		m.backspace()
+		return nil
+	case tcell.KeyRune:
+		m.typeRune(event.Rune())
+		return nil
+	}
+	return nil
+}
+
+
+
+func refreshBoard(ctx *appContext) {
+	startSync(ctx)
 }
