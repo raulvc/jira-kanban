@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/raulvc/jira-kanban/internal/jira"
 )
@@ -97,4 +98,29 @@ func TestDetailState_ScrollClamp(t *testing.T) {
 	if d.scroll != 0 {
 		t.Fatalf("scroll should clamp to 0, got %d", d.scroll)
 	}
+}
+
+func TestDetailContentHeight_ParentLineHiddenWhenEpic(t *testing.T) {
+	is := assert.New(t)
+
+	// Card where parent IS an epic: parent line hidden, epic badge shown
+	dEpic := &detailState{card: jira.Card{Key: "P-1", ParentKey: "EPIC-1", ParentSummary: "My Epic", ParentIsEpic: true, Epic: "My Epic"}}
+	hEpic := detailContentHeight(dEpic, 60)
+
+	// Card where parent is a regular story: both parent line and (no epic) shown
+	dStory := &detailState{card: jira.Card{Key: "P-2", ParentKey: "STORY-1", ParentSummary: "Story", ParentIsEpic: false, Epic: "My Epic"}}
+	hStory := detailContentHeight(dStory, 60)
+
+	is.Less(hEpic, hStory, "when ParentIsEpic=true, parent line is hidden (epic badge replaces it)")
+}
+
+func TestDetailContentHeight_ParentLineShownForSubtask(t *testing.T) {
+	is := assert.New(t)
+
+	// Subtask: parent line is shown because ParentIsEpic=false
+	d := &detailState{card: jira.Card{Key: "P-1", ParentKey: "STORY-1", ParentSummary: "Parent Story", ParentIsEpic: false}}
+	hNoParent := detailContentHeight(&detailState{card: jira.Card{Key: "P-2"}}, 60)
+	hWithParent := detailContentHeight(d, 60)
+
+	is.Equal(hNoParent+1, hWithParent, "parent line adds one row when ParentIsEpic=false and ParentKey is set")
 }

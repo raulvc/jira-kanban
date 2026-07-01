@@ -4,6 +4,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/raulvc/jira-kanban/internal/config"
 )
 
@@ -77,4 +80,73 @@ func TestThemeRoundTripViaConfig(t *testing.T) {
 	if T().Name != "Darcula" {
 		t.Fatalf("after SetThemeByName got %q, want %q", T().Name, "Darcula")
 	}
+}
+
+func TestLoadUIPrefs_ReadsHideEmpty(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+
+	path, err := config.Path()
+	require.NoError(t, err)
+
+	cfg := config.Config{
+		BaseURL:   "https://example.atlassian.net",
+		Email:     "user@example.com",
+		APIToken:  "secret-token",
+		BoardID:   42,
+		HideEmpty: true,
+	}
+	must := require.New(t)
+	is := assert.New(t)
+	must.NoError(config.Save(path, cfg))
+
+	var hideEmpty bool
+	loadUIPrefs(&hideEmpty)
+	is.True(hideEmpty, "hideEmpty should be loaded from config")
+}
+
+func TestLoadUIPrefs_DefaultsFalse(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+
+	path, err := config.Path()
+	require.NoError(t, err)
+
+	cfg := config.Config{
+		BaseURL:  "https://example.atlassian.net",
+		Email:    "user@example.com",
+		APIToken: "secret-token",
+		BoardID:  42,
+	}
+	must := require.New(t)
+	is := assert.New(t)
+	must.NoError(config.Save(path, cfg))
+
+	var hideEmpty bool
+	loadUIPrefs(&hideEmpty)
+	is.False(hideEmpty, "hideEmpty defaults to false when not set")
+}
+
+func TestSaveUIPrefs_WritesHideEmpty(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+
+	path, err := config.Path()
+	require.NoError(t, err)
+
+	cfg := config.Config{
+		BaseURL:  "https://example.atlassian.net",
+		Email:    "user@example.com",
+		APIToken: "secret-token",
+		BoardID:  42,
+	}
+	must := require.New(t)
+	is := assert.New(t)
+	must.NoError(config.Save(path, cfg))
+
+	saveUIPrefs(true)
+
+	loaded, loadErr := config.Load(path)
+	must.NoError(loadErr)
+	is.True(loaded.HideEmpty, "HideEmpty should be persisted as true")
 }

@@ -353,3 +353,104 @@ func TestSearchRecentActivity(t *testing.T) {
 	is.Len(items, 1)
 	is.Equal("status: To Do → In Progress", items[0].ChangeDesc)
 }
+
+func TestEditIssue_SummaryOnly(t *testing.T) {
+	fake := newFakeJira()
+	defer fake.close()
+
+	var receivedBody map[string]any
+	fake.handle("PUT /rest/api/3/issue/PROJ-1", func(w http.ResponseWriter, r *http.Request) {
+		must := require.New(t)
+		must.NoError(json.NewDecoder(r.Body).Decode(&receivedBody))
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	c := fake.client()
+	must := require.New(t)
+	is := assert.New(t)
+
+	summary := "New Summary"
+	must.NoError(c.EditIssue("PROJ-1", IssueEdit{Summary: &summary}))
+
+	fields := receivedBody["fields"].(map[string]any)
+	is.Equal("New Summary", fields["summary"])
+	_, hasDesc := fields["description"]
+	is.False(hasDesc, "description should not be set when nil")
+	_, hasLabels := fields["labels"]
+	is.False(hasLabels, "labels should not be set when nil")
+}
+
+func TestEditIssue_MultipleFields(t *testing.T) {
+	fake := newFakeJira()
+	defer fake.close()
+
+	var receivedBody map[string]any
+	fake.handle("PUT /rest/api/3/issue/PROJ-1", func(w http.ResponseWriter, r *http.Request) {
+		must := require.New(t)
+		must.NoError(json.NewDecoder(r.Body).Decode(&receivedBody))
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	c := fake.client()
+	must := require.New(t)
+	is := assert.New(t)
+
+	summary := "Updated"
+	desc := "New description"
+	labels := []string{"bug", "urgent"}
+	must.NoError(c.EditIssue("PROJ-1", IssueEdit{Summary: &summary, Description: &desc, Labels: &labels}))
+
+	fields := receivedBody["fields"].(map[string]any)
+	is.Equal("Updated", fields["summary"])
+	is.NotNil(fields["description"])
+	is.Equal([]any{"bug", "urgent"}, fields["labels"])
+}
+
+func TestEditIssue_NoFieldsIsNoop(t *testing.T) {
+	fake := newFakeJira()
+	defer fake.close()
+
+	called := false
+	fake.handle("PUT /rest/api/3/issue/PROJ-1", func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+	})
+
+	c := fake.client()
+	must := require.New(t)
+
+	must.NoError(c.EditIssue("PROJ-1", IssueEdit{}))
+	assert.False(t, called, "no fields should not make API call")
+}
+
+func TestClearEpic_SendsNullParent(t *testing.T) {
+	fake := newFakeJira()
+	defer fake.close()
+
+	var receivedBody map[string]any
+	fake.handle("PUT /rest/api/3/issue/PROJ-5", func(w http.ResponseWriter, r *http.Request) {
+		must := require.New(t)
+		must.NoError(json.NewDecoder(r.Body).Decode(&receivedBody))
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	c := fake.client()
+	must := require.New(t)
+	is := assert.New(t)
+
+	must.NoError(c.ClearEpic("PROJ-5"))
+	fields := receivedBody["fields"].(map[string]any)
+	is.Nil(fields["parent"], "parent should be nil in fields")
+}
+
+func TestClearEpic_Error(t *testing.T) {
+	fake := newFakeJira()
+	defer fake.close()
+
+	fake.handle("PUT /rest/api/3/issue/PROJ-1", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"errorMessages":["bad request"]}`))
+	})
+
+	c := fake.client()
+	assert.Error(t, c.ClearEpic("PROJ-1"), "expected error for 400")
+}

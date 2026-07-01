@@ -3,6 +3,9 @@ package ui
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/raulvc/jira-kanban/internal/jira"
 )
 
@@ -205,4 +208,173 @@ func TestReload(t *testing.T) {
 	if len(s.cardIdx) != 1 {
 		t.Fatal("cardIdx should match new column count")
 	}
+}
+
+func TestFilteredData_HideEmpty(t *testing.T) {
+	board := jira.Board{
+		Name: "B",
+		Columns: []jira.Column{
+			{Name: "To Do", Issues: []jira.Card{{Key: "P-1", Summary: "task", Status: "To Do"}}},
+			{Name: "In Progress", Issues: []jira.Card{}},
+			{Name: "Done", Issues: []jira.Card{{Key: "P-2", Summary: "done", Status: "Done"}}},
+		},
+	}
+
+	s := newBoardState(board)
+	is := assert.New(t)
+
+	fd := s.filteredData()
+	is.Len(fd.Columns, 3, "without hideEmpty, all columns present")
+
+	s.hideEmpty = true
+	fd = s.filteredData()
+	is.Len(fd.Columns, 2, "empty column should be hidden")
+	is.Equal("To Do", fd.Columns[0].Name)
+	is.Equal("Done", fd.Columns[1].Name)
+}
+
+func TestFilteredData_HideEmptyWithMemberFilter(t *testing.T) {
+	board := jira.Board{
+		Name: "B",
+		Columns: []jira.Column{
+			{Name: "To Do", Issues: []jira.Card{
+				{Key: "P-1", Summary: "task", Status: "To Do", Assignee: "Alice"},
+			}},
+			{Name: "In Progress", Issues: []jira.Card{}},
+			{Name: "Done", Issues: []jira.Card{
+				{Key: "P-2", Summary: "wip", Status: "Done", Assignee: "Bob"},
+			}},
+		},
+	}
+
+	s := newBoardState(board)
+	s.hideEmpty = true
+	s.memberFilter = "Alice"
+
+	is := assert.New(t)
+	fd := s.filteredData()
+	is.Len(fd.Columns, 2, "empty column hidden; In Progress is empty in original data")
+	is.Equal("To Do", fd.Columns[0].Name)
+	is.Equal("Done", fd.Columns[1].Name)
+	is.Len(fd.Columns[0].Issues, 1)
+	is.Empty(fd.Columns[1].Issues, "Done has no Alice cards after member filter")
+}
+
+func TestFilteredData_HideEmptyAllEmpty(t *testing.T) {
+	board := jira.Board{
+		Name: "B",
+		Columns: []jira.Column{
+			{Name: "To Do", Issues: nil},
+			{Name: "Done", Issues: nil},
+		},
+	}
+
+	s := newBoardState(board)
+	s.hideEmpty = true
+
+	is := assert.New(t)
+	fd := s.filteredData()
+	is.Empty(fd.Columns, "all columns empty should result in no columns")
+}
+
+func TestClampSelection_AfterHideEmptyToggle(t *testing.T) {
+	board := jira.Board{
+		Name: "B",
+		Columns: []jira.Column{
+			{Name: "To Do", Issues: []jira.Card{{Key: "P-1", Summary: "a", Status: "To Do"}}},
+			{Name: "In Progress", Issues: []jira.Card{}},
+			{Name: "Done", Issues: []jira.Card{{Key: "P-2", Summary: "b", Status: "Done"}}},
+		},
+	}
+
+	s := newBoardState(board)
+	s.colIdx = 1 // pointing at empty "In Progress" column
+	s.hideEmpty = true
+	s.clampSelection()
+
+	is := assert.New(t)
+	// colIdx still points at index 1 in the original data — clampSelection
+	// only adjusts cardIdx, not colIdx. But the filtered view removes
+	// column at index 1, so cardIdx should be valid.
+	is.Equal(0, s.cardIdx[1], "cardIdx for empty column should be 0")
+}
+
+func TestUpdateIssue_Summary(t *testing.T) {
+	s := newBoardState(testBoard())
+	is := require.New(t)
+
+	newSum := "updated summary"
+	s.updateIssue("P-1", &newSum, nil, nil, nil)
+
+	card := s.data.Columns[0].Issues[0]
+	is.Equal("updated summary", card.Summary)
+}
+
+func TestUpdateIssue_ClearsEpicAndParentWhenParentIsEpic(t *testing.T) {
+	board := jira.Board{
+		Name: "B",
+		Columns: []jira.Column{
+			{Name: "To Do", Issues: []jira.Card{
+				{Key: "P-1", Summary: "task", Status: "To Do", Epic: "My Epic", ParentKey: "EPIC-1", ParentSummary: "My Epic", ParentIsEpic: true},
+			}},
+		},
+	}
+
+	s := newBoardState(board)
+	is := require.New(t)
+
+	epic := ""
+	s.updateIssue("P-1", nil, nil, nil, &epic)
+
+	card := s.data.Columns[0].Issues[0]
+	is.Equal("", card.Epic)
+	is.Equal("", card.ParentKey)
+	is.Equal("", card.ParentSummary)
+	is.False(card.ParentIsEpic)
+}
+
+func TestUpdateIssue_ClearEpicDoesNotClearParentWhenNotEpic(t *testing.T) {
+	board := jira.Board{
+		Name: "B",
+		Columns: []jira.Column{
+			{Name: "To Do", Issues: []jira.Card{
+				{Key: "P-1", Summary: "subtask", Status: "To Do", Epic: "", ParentKey: "PARENT-1", ParentSummary: "Parent Story", ParentIsEpic: false},
+			}},
+		},
+	}
+
+	s := newBoardState(board)
+	is := require.New(t)
+
+	epic := ""
+	s.updateIssue("P-1", nil, nil, nil, &epic)
+
+	card := s.data.Columns[0].Issues[0]
+	is.Equal("", card.Epic)
+	is.Equal("PARENT-1", card.ParentKey, "parent should not be cleared when ParentIsEpic is false")
+	is.Equal("Parent Story", card.ParentSummary)
+	is.False(card.ParentIsEpic)
+}
+
+func TestUpdateIssue_UpdatesDetailCard(t *testing.T) {
+	s := newBoardState(testBoard())
+	s.detail = &detailState{card: jira.Card{Key: "P-1", Summary: "original", Description: "old", Epic: "E1"}}
+	is := require.New(t)
+
+	newSum := "new summary"
+	epic := "E2"
+	s.updateIssue("P-1", &newSum, nil, nil, &epic)
+
+	is.Equal("new summary", s.detail.card.Summary)
+	is.Equal("E2", s.detail.card.Epic)
+}
+
+func TestUpdateIssue_NilFieldsNoOp(t *testing.T) {
+	s := newBoardState(testBoard())
+	is := require.New(t)
+
+	orig := s.data.Columns[0].Issues[0]
+	s.updateIssue("P-1", nil, nil, nil, nil)
+	card := s.data.Columns[0].Issues[0]
+	is.Equal(orig, card)
 }

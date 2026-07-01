@@ -562,31 +562,7 @@ func drawLabelsBadgeSection(screen tcell.Screen, f *formState, lay modalLayout, 
 	return cy
 }
 
-func drawLabelsEditSection(screen tcell.Screen, f *formState, lay modalLayout, cy int, s formStyles) int {
-	lStyle := s.label
-	if f.field == ifLabels {
-		lStyle = s.activeLabel
-	}
-	drawText(screen, lay.ox+2, cy, " Labels", lStyle, lay.contentW)
-	cy++
-	lx := lay.ox + 2
-	for _, label := range f.labels {
-		ls := tcell.StyleDefault.Foreground(labelColor(label)).Background(T().Panel)
-		text := " " + label + " "
-		drawn := drawText(screen, lx, cy, text, ls, lay.contentW-(lx-lay.ox-2))
-		lx += drawn + 1
-		if lx-lay.ox-2 >= lay.contentW {
-			break
-		}
-	}
-	if f.field == ifLabels {
-		drawInputFieldInline(screen, lx, cy, f.labelInput, "add…", f.labelCur, true, s.input, s.activeInput, s.placeholder, lay.contentW-(lx-lay.ox-2))
-	}
-	cy++
-	drawSep(screen, lay.ox+2, cy, lay.contentW, s.sep)
-	cy++
-	return cy
-}
+
 
 func drawFormDescCursor(screen tcell.Screen, f *formState, lay modalLayout, descBoxY, descBoxH int, lines []string, activeInputStyle tcell.Style) {
 	cursorSt := tcell.StyleDefault.Foreground(T().BadgeFg).Background(T().Cyan).Bold(true)
@@ -662,30 +638,7 @@ func drawInputField(screen tcell.Screen, x, y, w int, value, placeholder string,
 	}
 }
 
-func drawInputFieldInline(screen tcell.Screen, x, y int, text, placeholder string, cur int, active bool, style, activeStyle, placeholderStyle tcell.Style, maxW int) {
-	if active {
-		fillRow(screen, x, y, maxW, activeStyle)
-		runes := []rune(text)
-		visible := min(len(runes), maxW-2)
-		offset := 0
-		if cur > visible {
-			offset = cur - visible
-		}
-		drawText(screen, x+1, y, string(runes[offset:offset+visible]), activeStyle, maxW-1)
-		cursorX := x + 1 + cur - offset
-		if cur < len(runes) {
-			screen.SetContent(cursorX, y, runes[cur], nil, tcell.StyleDefault.Foreground(T().BadgeFg).Background(T().Cyan).Bold(true))
-		} else {
-			screen.SetContent(cursorX, y, '▏', nil, activeStyle)
-		}
-	} else {
-		if text == "" {
-			drawText(screen, x, y, placeholder, placeholderStyle, maxW)
-		} else {
-			drawText(screen, x, y, text, style, maxW)
-		}
-	}
-}
+
 
 func drawSep(screen tcell.Screen, x, y, w int, style tcell.Style) {
 	line := strings.Repeat("─", w)
