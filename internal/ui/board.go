@@ -71,7 +71,8 @@ func (s *boardState) selectedCard() *jira.Card {
 	if len(col.Issues) == 0 {
 		return nil
 	}
-	ci := s.cardIdx[s.colIdx]
+	origCol := fd.origIdx[s.colIdx]
+	ci := s.cardIdx[origCol]
 	if ci < 0 || ci >= len(col.Issues) {
 		return nil
 	}
@@ -79,14 +80,15 @@ func (s *boardState) selectedCard() *jira.Card {
 }
 
 func (s *boardState) moveColumn(delta int) {
+	fd := s.filteredData()
 	next := s.colIdx + delta
-	if next < 0 || next >= len(s.data.Columns) {
+	if next < 0 || next >= len(fd.Columns) {
 		return
 	}
 	s.colIdx = next
-	fd := s.filteredData()
-	if s.cardIdx[next] >= len(fd.Columns[next].Issues) && len(fd.Columns[next].Issues) > 0 {
-		s.cardIdx[next] = len(fd.Columns[next].Issues) - 1
+	origCol := fd.origIdx[next]
+	if s.cardIdx[origCol] >= len(fd.Columns[next].Issues) && len(fd.Columns[next].Issues) > 0 {
+		s.cardIdx[origCol] = len(fd.Columns[next].Issues) - 1
 	}
 	s.statusMsg = ""
 }
@@ -100,9 +102,10 @@ func (s *boardState) moveCard(delta int) {
 	if len(issues) == 0 {
 		return
 	}
-	next := s.cardIdx[s.colIdx] + delta
+	origCol := fd.origIdx[s.colIdx]
+	next := s.cardIdx[origCol] + delta
 	next = max(0, min(next, len(issues)-1))
-	s.cardIdx[s.colIdx] = next
+	s.cardIdx[origCol] = next
 	s.statusMsg = ""
 }
 
@@ -115,10 +118,11 @@ func (s *boardState) jumpCard(end bool) {
 	if len(issues) == 0 {
 		return
 	}
+	origCol := fd.origIdx[s.colIdx]
 	if end {
-		s.cardIdx[s.colIdx] = len(issues) - 1
+		s.cardIdx[origCol] = len(issues) - 1
 	} else {
-		s.cardIdx[s.colIdx] = 0
+		s.cardIdx[origCol] = 0
 	}
 	s.statusMsg = ""
 }
@@ -254,13 +258,25 @@ func (s *boardState) reload(data jira.Board) {
 	s.syncTotal = 0
 	s.selectCardByKey(s.pendingSelect)
 	s.pendingSelect = ""
+	s.clampSelection()
 }
 
-// filteredData returns a copy of the board data with only cards matching
-// the current memberFilter. If no filter is set, it returns the original data.
-func (s *boardState) filteredData() jira.Board {
-	result := jira.Board{Name: s.data.Name}
-	for _, col := range s.data.Columns {
+// filteredBoard holds the filtered view of the board data alongside
+// a mapping from each filtered column index back to the original
+// (unfiltered) column index.  Navigation (colIdx) uses filtered
+// indices; cardIdx and scrollOffset use original indices.
+type filteredBoard struct {
+	jira.Board
+	origIdx []int // filtered col i → original col index
+}
+// filteredData returns a filtered view of the board data with only cards
+// matching the current filters.  Empty columns are removed when hideEmpty
+// is set.  The returned filteredBoard carries a mapping from each visible
+// column index back to the original data column index.
+func (s *boardState) filteredData() filteredBoard {
+	result := filteredBoard{origIdx: make([]int, 0, len(s.data.Columns))}
+	result.Board = jira.Board{Name: s.data.Name}
+	for ci, col := range s.data.Columns {
 		if s.hideEmpty && len(col.Issues) == 0 {
 			continue
 		}
@@ -268,13 +284,14 @@ func (s *boardState) filteredData() jira.Board {
 		for _, card := range col.Issues {
 			if s.memberFilter != "" && card.Assignee != s.memberFilter {
 				continue
-			}
+		}
 			if s.epicFilterVal != "" && card.Epic != s.epicFilterVal {
 				continue
 			}
 			fc.Issues = append(fc.Issues, card)
 		}
 		result.Columns = append(result.Columns, fc)
+		result.origIdx = append(result.origIdx, ci)
 	}
 	return result
 }
@@ -283,20 +300,21 @@ func (s *boardState) filteredData() jira.Board {
 // currently visible (filtered) issues. Call after the filter changes.
 func (s *boardState) clampSelection() {
 	fd := s.filteredData()
-	for i := range s.cardIdx {
-		if i >= len(fd.Columns) {
-			continue
-		}
-		n := len(fd.Columns[i].Issues)
+	if s.colIdx >= len(fd.Columns) {
+		s.colIdx = 0
+	}
+	for fci := range fd.Columns {
+		oci := fd.origIdx[fci]
+		n := len(fd.Columns[fci].Issues)
 		if n == 0 {
-			s.cardIdx[i] = 0
+			s.cardIdx[oci] = 0
 			continue
 		}
-		if s.cardIdx[i] >= n {
-			s.cardIdx[i] = n - 1
+		if s.cardIdx[oci] >= n {
+			s.cardIdx[oci] = n - 1
 		}
-		if s.cardIdx[i] < 0 {
-			s.cardIdx[i] = 0
+		if s.cardIdx[oci] < 0 {
+			s.cardIdx[oci] = 0
 		}
 	}
 }
@@ -308,11 +326,11 @@ func (s *boardState) selectCardByKey(key string) {
 		return
 	}
 	fd := s.filteredData()
-	for ci, col := range fd.Columns {
+	for fci, col := range fd.Columns {
 		for i, card := range col.Issues {
 			if card.Key == key {
-				s.colIdx = ci
-				s.cardIdx[ci] = i
+				s.colIdx = fci
+				s.cardIdx[fd.origIdx[fci]] = i
 				return
 			}
 		}
@@ -357,7 +375,7 @@ func drawBoard(screen tcell.Screen, s *boardState, boardID, x, y, width, height 
 	}
 	drawStatusBar(screen, s, boardID, x, y, width)
 	drawHelpBar(screen, x, y+height-1, width)
-	drawColumns(screen, s, &fd, x, y+2, width, height-3)
+	drawColumns(screen, s, fd, x, y+2, width, height-3)
 
 	if s.filter != nil {
 		drawFilterModal(screen, s.filter, width, height, s.currentUser)
@@ -436,7 +454,7 @@ func drawStatusBar(screen tcell.Screen, s *boardState, boardID, x, y, width int)
 		if s.colIdx < len(fd.Columns) {
 			n = len(fd.Columns[s.colIdx].Issues)
 			if n > 0 {
-				ci = s.cardIdx[s.colIdx] + 1
+				ci = s.cardIdx[fd.origIdx[s.colIdx]] + 1
 			}
 		}
 		text = fmt.Sprintf(" %s  board=%d  col %d/%d  card %d/%d  theme: %s",
@@ -462,7 +480,7 @@ func drawHelpBar(screen tcell.Screen, x, y, width int) {
 		style, width)
 }
 
-func drawColumns(screen tcell.Screen, s *boardState, fd *jira.Board, x, y, width, height int) {
+func drawColumns(screen tcell.Screen, s *boardState, fd filteredBoard, x, y, width, height int) {
 	if height < 1 {
 		return
 	}
@@ -507,19 +525,20 @@ func drawColumnHeader(screen tcell.Screen, col jira.Column, active bool, x, y, w
 	drawText(screen, x, y, fmt.Sprintf(" %s  %d", name, len(col.Issues)), style, w)
 }
 
-func drawColumnCards(screen tcell.Screen, fd *jira.Board, s *boardState, ci int, active bool, x, y, w, h int) {
+func drawColumnCards(screen tcell.Screen, fd filteredBoard, s *boardState, ci int, active bool, x, y, w, h int) {
 	col := fd.Columns[ci]
 	if len(col.Issues) == 0 {
 		drawText(screen, x+1, y, "No issues",
 			tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg), w-2)
 		return
 	}
-	curCard := min(s.cardIdx[ci], len(col.Issues)-1)
-	scroll := s.scrollOffset[ci]
+	oci := fd.origIdx[ci]
+	curCard := min(s.cardIdx[oci], len(col.Issues)-1)
+	scroll := s.scrollOffset[oci]
 
 	if active {
 		scroll = ensureVisible(col.Issues, curCard, scroll, w, h)
-		s.scrollOffset[ci] = scroll
+		s.scrollOffset[oci] = scroll
 	}
 
 	drawY := y - scroll
