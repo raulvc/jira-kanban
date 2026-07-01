@@ -171,6 +171,32 @@ func saveThemePrefs() {
 	_ = config.Save(path, cfg)
 }
 
+func loadUIPrefs(hideEmpty *bool) {
+	path, err := config.Path()
+	if err != nil {
+		return
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		return
+	}
+	*hideEmpty = cfg.HideEmpty
+}
+
+func saveUIPrefs(hideEmpty bool) {
+	path, err := config.Path()
+	if err != nil {
+		return
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		return
+	}
+	cfg.HideEmpty = hideEmpty
+	cfg.Theme = ThemeName()
+	_ = config.Save(path, cfg)
+}
+
 func strhash(s string) int {
 	h := 0
 	for _, r := range s {

@@ -13,11 +13,12 @@ func TestSaveAndLoad(t *testing.T) {
 	path := filepath.Join(dir, "config.yml")
 
 	cfg := Config{
-		BaseURL:  "https://example.atlassian.net",
-		Email:    "user@example.com",
-		APIToken: "secret-token",
-		BoardID:  42,
-		Theme:    "Kanagawa Light",
+		BaseURL:   "https://example.atlassian.net",
+		Email:     "user@example.com",
+		APIToken:  "secret-token",
+		BoardID:   42,
+		Theme:     "Kanagawa Light",
+		HideEmpty: true,
 	}
 	must := require.New(t)
 	is := assert.New(t)
@@ -30,6 +31,7 @@ func TestSaveAndLoad(t *testing.T) {
 	is.Equal(cfg.APIToken, loaded.APIToken)
 	is.Equal(42, loaded.BoardID)
 	is.Equal("Kanagawa Light", loaded.Theme)
+	is.True(loaded.HideEmpty)
 }
 
 func TestLoad_NotFound(t *testing.T) {

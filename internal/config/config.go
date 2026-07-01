@@ -17,11 +17,12 @@ import (
 
 // Config holds the credentials and board selector needed to talk to Jira.
 type Config struct {
-	BaseURL string `yaml:"base_url"`
-	Email   string `yaml:"email"`
-	APIToken string `yaml:"api_token"`
-	BoardID int    `yaml:"board_id"`
-	Theme   string `yaml:"theme"`
+	BaseURL   string `yaml:"base_url"`
+	Email     string `yaml:"email"`
+	APIToken  string `yaml:"api_token"`
+	BoardID   int    `yaml:"board_id"`
+	Theme     string `yaml:"theme"`
+	HideEmpty bool   `yaml:"hide_empty"`
 }
 
 // Path returns the default configuration file location.

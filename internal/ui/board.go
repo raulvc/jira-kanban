@@ -39,6 +39,7 @@ type boardState struct {
 	accountID      string
 	projectKey     string
 	pendingSelect  string // key to select after next board reload
+	hideEmpty      bool
 }
 
 func newBoardState(data jira.Board) *boardState {
@@ -258,11 +259,11 @@ func (s *boardState) reload(data jira.Board) {
 // filteredData returns a copy of the board data with only cards matching
 // the current memberFilter. If no filter is set, it returns the original data.
 func (s *boardState) filteredData() jira.Board {
-	if s.memberFilter == "" && s.epicFilterVal == "" {
-		return s.data
-	}
 	result := jira.Board{Name: s.data.Name}
 	for _, col := range s.data.Columns {
+		if s.hideEmpty && len(col.Issues) == 0 {
+			continue
+		}
 		fc := jira.Column{Name: col.Name}
 		for _, card := range col.Issues {
 			if s.memberFilter != "" && card.Assignee != s.memberFilter {
@@ -446,6 +447,9 @@ func drawStatusBar(screen tcell.Screen, s *boardState, boardID, x, y, width int)
 		if s.epicFilterVal != "" {
 			text += fmt.Sprintf("  epic: %s", s.epicFilterVal)
 		}
+		if s.hideEmpty {
+			text += "  hide-empty"
+		}
 	}
 	drawText(screen, x, y, text, style, width)
 }
@@ -454,7 +458,7 @@ func drawHelpBar(screen tcell.Screen, x, y, width int) {
 	style := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
 	fillRow(screen, x, y, width, style)
 	drawText(screen, x, y,
-		" ←/→ cols • ↑/↓ cards • e edit • f filter • ^E epic • a assign • c create • C clone • h history • t transition • o browser • y copy key • ^Y copy url • r refresh • + theme • q quit",
+		" ←/→ cols • ↑/↓ cards • e edit • f filter • ^E epic • h hide-empty • a assign • c create • C clone • H history • t transition • o browser • y copy key • ^Y copy url • r refresh • + theme • q quit",
 		style, width)
 }
 
@@ -741,6 +745,16 @@ func handleBoardRune(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		startCreateOrClone(ctx, true)
 		return nil
 	case 'h':
+		ctx.state.hideEmpty = !ctx.state.hideEmpty
+		ctx.state.clampSelection()
+		saveUIPrefs(ctx.state.hideEmpty)
+		if ctx.state.hideEmpty {
+			ctx.state.statusMsg = " Hiding empty columns"
+		} else {
+			ctx.state.statusMsg = " Showing empty columns"
+		}
+		return nil
+	case 'H':
 		if ctx.state.history == nil {
 			openHistory(ctx)
 		}

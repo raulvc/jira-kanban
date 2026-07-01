@@ -28,12 +28,12 @@ type appContext struct {
 // background refresh is triggered immediately after the first render.
 func Run(client *jira.Client, boardID int, data jira.Board, baseURL string, needsSync bool) error {
 	if err := loadThemePrefs(); err != nil {
-		// Non-fatal: just use the default theme.
 		_ = err
 	}
 
 	app := tview.NewApplication()
 	state := newBoardState(data)
+	loadUIPrefs(&state.hideEmpty)
 	ctx := &appContext{
 		app:     app,
 		state:   state,
