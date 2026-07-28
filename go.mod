@@ -11,7 +11,9 @@ require (
 )
 
 require (
+	github.com/alecthomas/chroma/v2 v2.27.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
 	github.com/gdamore/encoding v1.0.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect

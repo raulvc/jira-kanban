@@ -33,6 +33,17 @@ type Theme struct {
 	Aqua    tcell.Color
 
 	BadgeFg tcell.Color
+
+	CodeFg   tcell.Color // inline code and code block text
+	CodeBg   tcell.Color // code block background
+	BoldFg   tcell.Color // bold text foreground (brighter than Fg)
+	QuoteFg  tcell.Color // blockquote / rule foreground
+
+	KeywordColor tcell.Color // syntax: keywords
+	StringColor  tcell.Color // syntax: strings
+	CommentColor tcell.Color // syntax: comments
+	NumberColor  tcell.Color // syntax: numbers
+	FuncColor    tcell.Color // syntax: function names
 }
 
 var themes = []Theme{
@@ -49,6 +60,11 @@ var themes = []Theme{
 		Lime: tcell.NewRGBColor(170, 210, 90), Gold: tcell.NewRGBColor(220, 175, 80),
 		Coral: tcell.NewRGBColor(240, 130, 100), Mauve: tcell.NewRGBColor(170, 120, 190),
 		Aqua: tcell.NewRGBColor(80, 190, 210), BadgeFg: tcell.ColorBlack,
+		CodeFg: tcell.NewRGBColor(160, 180, 200), CodeBg: tcell.NewRGBColor(22, 22, 32),
+		BoldFg: tcell.NewRGBColor(245, 240, 210), QuoteFg: tcell.NewRGBColor(150, 155, 160),
+		KeywordColor: tcell.NewRGBColor(180, 140, 200), StringColor: tcell.NewRGBColor(152, 187, 108),
+		CommentColor: tcell.NewRGBColor(110, 110, 100), NumberColor: tcell.NewRGBColor(230, 195, 132),
+		FuncColor: tcell.NewRGBColor(127, 180, 202),
 	},
 	{
 		Name: "Kanagawa Light",
@@ -63,6 +79,11 @@ var themes = []Theme{
 		Lime: tcell.NewRGBColor(80, 130, 50), Gold: tcell.NewRGBColor(140, 115, 50),
 		Coral: tcell.NewRGBColor(170, 65, 50), Mauve: tcell.NewRGBColor(120, 80, 140),
 		Aqua: tcell.NewRGBColor(60, 130, 140), BadgeFg: tcell.NewRGBColor(255, 255, 255),
+		CodeFg: tcell.NewRGBColor(100, 120, 130), CodeBg: tcell.NewRGBColor(205, 200, 175),
+		BoldFg: tcell.NewRGBColor(50, 50, 70), QuoteFg: tcell.NewRGBColor(110, 110, 100),
+		KeywordColor: tcell.NewRGBColor(122, 122, 160), StringColor: tcell.NewRGBColor(80, 120, 40),
+		CommentColor: tcell.NewRGBColor(130, 130, 120), NumberColor: tcell.NewRGBColor(160, 130, 40),
+		FuncColor: tcell.NewRGBColor(70, 115, 120),
 	},
 	{
 		Name: "Darcula",
@@ -77,6 +98,11 @@ var themes = []Theme{
 		Lime: tcell.NewRGBColor(141, 182, 112), Gold: tcell.NewRGBColor(255, 198, 109),
 		Coral: tcell.NewRGBColor(232, 87, 76), Mauve: tcell.NewRGBColor(168, 140, 192),
 		Aqua: tcell.NewRGBColor(91, 168, 176), BadgeFg: tcell.ColorBlack,
+		CodeFg: tcell.NewRGBColor(180, 195, 210), CodeBg: tcell.NewRGBColor(33, 33, 38),
+		BoldFg: tcell.NewRGBColor(210, 220, 230), QuoteFg: tcell.NewRGBColor(128, 128, 128),
+		KeywordColor: tcell.NewRGBColor(204, 120, 50), StringColor: tcell.NewRGBColor(106, 135, 89),
+		CommentColor: tcell.NewRGBColor(128, 128, 128), NumberColor: tcell.NewRGBColor(187, 181, 41),
+		FuncColor: tcell.NewRGBColor(104, 151, 187),
 	},
 	{
 		Name: "Darcula Light",
@@ -91,6 +117,11 @@ var themes = []Theme{
 		Lime: tcell.NewRGBColor(141, 182, 112), Gold: tcell.NewRGBColor(255, 198, 109),
 		Coral: tcell.NewRGBColor(232, 87, 76), Mauve: tcell.NewRGBColor(168, 140, 192),
 		Aqua: tcell.NewRGBColor(91, 168, 176), BadgeFg: tcell.NewRGBColor(255, 255, 255),
+		CodeFg: tcell.NewRGBColor(40, 80, 100), CodeBg: tcell.NewRGBColor(230, 235, 240),
+		BoldFg: tcell.NewRGBColor(30, 30, 50), QuoteFg: tcell.NewRGBColor(100, 100, 100),
+		KeywordColor: tcell.NewRGBColor(0, 51, 176), StringColor: tcell.NewRGBColor(6, 125, 23),
+		CommentColor: tcell.NewRGBColor(128, 128, 128), NumberColor: tcell.NewRGBColor(204, 120, 50),
+		FuncColor: tcell.NewRGBColor(0, 110, 123),
 	},
 }
 

@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/alecthomas/chroma/v2"
+	"github.com/alecthomas/chroma/v2/lexers"
 )
 
 // boardConfigResponse is the JSON shape returned by GET /rest/agile/1.0/board/{id}/configuration.
@@ -148,16 +151,36 @@ type Card struct {
 	Subtasks      []Subtask
 }
 
-// DescStyle identifies the visual style of a description segment.
+// DescStyle is a bitmask of style flags for a description segment.
+// Multiple flags can be combined (e.g. DsBold | DsItalic).
 type DescStyle int
 
 const (
-	DsUnknown  DescStyle = iota // unknown/default
-	DsText                       // normal text
-	DsLink                       // hyperlink (cyan)
-	DsCode                       // code block (dim/indented)
-	DsHeading                    // heading (bold)
+	DsNormal       DescStyle = 0
+	DsBold         DescStyle = 1 << iota // bold
+	DsItalic                             // italic
+	DsStrikethrough                      // strikethrough
+	DsInlineCode                         // inline code
+	DsUnderline                          // underline
+	DsLink                               // hyperlink
+	DsHeading                            // heading
+	DsCodeBlock                          // code block
+	DsBlockquote                         // blockquote
+	DsKeyword                            // syntax: keyword
+	DsString                             // syntax: string literal
+	DsComment                            // syntax: comment
+	DsNumber                             // syntax: numeric literal
+	DsFuncName                           // syntax: function name
 )
+
+// DsUnknown is kept for backward compatibility; it maps to DsNormal.
+const DsUnknown DescStyle = DsNormal
+
+// DsText is kept for backward compatibility; it maps to DsNormal.
+const DsText DescStyle = DsNormal
+
+// DsCode is kept for backward compatibility; it maps to DsCodeBlock.
+const DsCode DescStyle = DsCodeBlock
 
 // DescSeg is a styled segment of a description.
 type DescSeg struct {
@@ -225,10 +248,12 @@ func renderADFNode(b *strings.Builder, node adfNode) {
 	switch node.Type {
 	case "paragraph":
 		renderADFChildren(b, node.Content)
-	case "bulletList", "orderedList":
-		renderADFListItems(b, node.Content)
+	case "bulletList":
+		renderADFListItems(b, node.Content, "• ")
+	case "orderedList":
+		renderADFOrderedItems(b, node.Content)
 	case "listItem":
-		renderADFListItem(b, node.Content)
+		renderADFListItem(b, node.Content, "• ")
 	case "heading":
 		renderADFHeading(b, node)
 	case "text", "inlineCard":
@@ -237,7 +262,11 @@ func renderADFNode(b *strings.Builder, node adfNode) {
 		b.WriteByte('\n')
 	case "codeBlock":
 		renderADFCodeBlock(b, node)
-	case "blockCard", "mediaGroup", "media", "rule":
+	case "blockCard", "mediaGroup", "media":
+		renderADFBlockChildren(b, node.Content)
+	case "rule":
+		b.WriteString("───────────────")
+	case "blockquote":
 		renderADFBlockChildren(b, node.Content)
 	default:
 		renderADFChildren(b, node.Content)
@@ -250,17 +279,26 @@ func renderADFChildren(b *strings.Builder, children []adfNode) {
 	}
 }
 
-func renderADFListItems(b *strings.Builder, items []adfNode) {
+func renderADFListItems(b *strings.Builder, items []adfNode, prefix string) {
 	for i, child := range items {
 		if i > 0 {
 			b.WriteByte('\n')
 		}
-		renderADFNode(b, child)
+		renderADFListItem(b, child.Content, prefix)
 	}
 }
 
-func renderADFListItem(b *strings.Builder, children []adfNode) {
-	b.WriteString("• ")
+func renderADFOrderedItems(b *strings.Builder, items []adfNode) {
+	for i, child := range items {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		renderADFListItem(b, child.Content, fmt.Sprintf("%d. ", i+1))
+	}
+}
+
+func renderADFListItem(b *strings.Builder, children []adfNode, prefix string) {
+	b.WriteString(prefix)
 	for i, child := range children {
 		if i > 0 {
 			b.WriteByte('\n')
@@ -270,8 +308,6 @@ func renderADFListItem(b *strings.Builder, children []adfNode) {
 }
 
 func renderADFHeading(b *strings.Builder, node adfNode) {
-	prefix := strings.Repeat("#", node.Attrs.Level) + " "
-	b.WriteString(prefix)
 	for _, child := range node.Content {
 		renderADFNode(b, child)
 	}
@@ -292,18 +328,9 @@ func renderADFText(b *strings.Builder, node adfNode) {
 }
 
 func renderADFCodeBlock(b *strings.Builder, node adfNode) {
-	lang := node.Attrs.Language
-	if lang != "" {
-		b.WriteString("```")
-		b.WriteString(lang)
-		b.WriteByte('\n')
-	} else {
-		b.WriteString("```\n")
-	}
 	for _, child := range node.Content {
 		renderADFNode(b, child)
 	}
-	b.WriteString("\n```")
 }
 
 func renderADFBlockChildren(b *strings.Builder, children []adfNode) {
@@ -361,32 +388,40 @@ func appendRichNode(segs []DescSeg, node adfNode) []DescSeg {
 		}
 	case "heading":
 		segs = appendRichHeading(segs, node)
-	case "bulletList", "orderedList":
+	case "bulletList":
 		for i, child := range node.Content {
 			if i > 0 {
 				segs = append(segs, DescSeg{Text: "\n"})
 			}
-			segs = appendRichNode(segs, child)
+			segs = appendRichListItem(segs, child, "• ")
+		}
+	case "orderedList":
+		for i, child := range node.Content {
+			if i > 0 {
+				segs = append(segs, DescSeg{Text: "\n"})
+			}
+			segs = appendRichListItem(segs, child, fmt.Sprintf("%d. ", i+1))
 		}
 	case "listItem":
-		segs = append(segs, DescSeg{Text: "• "})
-		for i, child := range node.Content {
-			if i > 0 {
-				segs = append(segs, DescSeg{Text: "\n"})
-			}
-			segs = appendRichNode(segs, child)
-		}
+		segs = appendRichListItem(segs, node, "• ")
 	case "text", "inlineCard":
 		segs = appendRichText(segs, node)
 	case "hardBreak":
 		segs = append(segs, DescSeg{Text: "\n"})
 	case "codeBlock":
 		segs = appendRichCodeBlock(segs, node)
-	case "blockCard", "mediaGroup", "media", "rule":
+	case "blockCard", "mediaGroup", "media":
 		for _, child := range node.Content {
 			segs = appendRichNode(segs, child)
 			segs = append(segs, DescSeg{Text: "\n"})
 		}
+	case "rule":
+		segs = append(segs, DescSeg{Text: "───────────────\n", Style: DsBlockquote})
+	case "blockquote":
+		for _, child := range node.Content {
+			segs = appendRichNode(segs, child)
+		}
+		segs = append(segs, DescSeg{Text: "\n"})
 	default:
 		for _, child := range node.Content {
 			segs = appendRichNode(segs, child)
@@ -395,9 +430,18 @@ func appendRichNode(segs []DescSeg, node adfNode) []DescSeg {
 	return segs
 }
 
+func appendRichListItem(segs []DescSeg, node adfNode, prefix string) []DescSeg {
+	segs = append(segs, DescSeg{Text: prefix})
+	for i, child := range node.Content {
+		if i > 0 {
+			segs = append(segs, DescSeg{Text: "\n"})
+		}
+		segs = appendRichNode(segs, child)
+	}
+	return segs
+}
+
 func appendRichHeading(segs []DescSeg, node adfNode) []DescSeg {
-	prefix := strings.Repeat("#", node.Attrs.Level) + " "
-	segs = append(segs, DescSeg{Text: prefix, Style: DsHeading})
 	for _, child := range node.Content {
 		segs = append(segs, DescSeg{Text: child.Text, Style: DsHeading})
 	}
@@ -408,8 +452,19 @@ func appendRichHeading(segs []DescSeg, node adfNode) []DescSeg {
 func appendRichText(segs []DescSeg, node adfNode) []DescSeg {
 	style := DsText
 	for _, m := range node.Marks {
-		if m.Type == "link" {
-			style = DsLink
+		switch m.Type {
+		case "link":
+			style |= DsLink
+		case "strong":
+			style |= DsBold
+		case "em":
+			style |= DsItalic
+		case "strike":
+			style |= DsStrikethrough
+		case "code":
+			style |= DsInlineCode
+		case "underline":
+			style |= DsUnderline
 		}
 	}
 	segs = append(segs, DescSeg{Text: node.Text, Style: style})
@@ -424,16 +479,70 @@ func appendRichText(segs []DescSeg, node adfNode) []DescSeg {
 }
 
 func appendRichCodeBlock(segs []DescSeg, node adfNode) []DescSeg {
-	prefix := "```\n"
-	if lang := node.Attrs.Language; lang != "" {
-		prefix = "```" + lang + "\n"
-	}
-	segs = append(segs, DescSeg{Text: prefix, Style: DsCode})
+	var code strings.Builder
 	for _, child := range node.Content {
-		segs = append(segs, DescSeg{Text: child.Text, Style: DsCode})
+		code.WriteString(child.Text)
 	}
-	segs = append(segs, DescSeg{Text: "\n```", Style: DsCode})
+	lang := node.Attrs.Language
+	highlighted := highlightCode(code.String(), lang)
+	if len(highlighted) == 0 {
+		segs = append(segs, DescSeg{Text: "\n", Style: DsCodeBlock})
+		segs = append(segs, DescSeg{Text: code.String(), Style: DsCodeBlock})
+		segs = append(segs, DescSeg{Text: "\n", Style: DsCodeBlock})
+		return segs
+	}
+	segs = append(segs, DescSeg{Text: "\n", Style: DsCodeBlock})
+	segs = append(segs, highlighted...)
+	segs = append(segs, DescSeg{Text: "\n", Style: DsCodeBlock})
 	return segs
+}
+
+// highlightCode tokenizes source code using chroma and returns styled
+// segments with syntax-specific DescStyle flags. Falls back to nil (no
+// highlighting) if the language is unknown or tokenization fails.
+func highlightCode(code, lang string) []DescSeg {
+	var lexer chroma.Lexer
+	if lang != "" {
+		lexer = lexers.Get(lang)
+	}
+	if lexer == nil {
+		lexer = lexers.Analyse(code) //nolint:misspell // chroma API uses British spelling
+	}
+	if lexer == nil {
+		return nil
+	}
+	lexer = chroma.Coalesce(lexer)
+	it, err := lexer.Tokenise(nil, code)
+	if err != nil {
+		return nil
+	}
+	var segs []DescSeg
+	for t := it(); t != chroma.EOF; t = it() {
+		segs = append(segs, DescSeg{
+			Text:  t.Value,
+			Style: DsCodeBlock | chromaToDescStyle(t.Type),
+		})
+	}
+	return segs
+}
+
+// chromaToDescStyle maps a chroma token type to the appropriate DescStyle
+// flag. Returns 0 (DsNormal) for uncategorized tokens.
+func chromaToDescStyle(tt chroma.TokenType) DescStyle {
+	switch {
+	case tt.InCategory(chroma.Keyword):
+		return DsKeyword
+	case tt.InSubCategory(chroma.LiteralString):
+		return DsString
+	case tt.InSubCategory(chroma.LiteralNumber):
+		return DsNumber
+	case tt.InCategory(chroma.Comment):
+		return DsComment
+	case tt.InSubCategory(chroma.NameFunction):
+		return DsFuncName
+	default:
+		return DsNormal
+	}
 }
 
 // VisibleKeys returns the set of issue keys present on the board.

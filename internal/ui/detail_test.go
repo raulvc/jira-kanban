@@ -124,3 +124,147 @@ func TestDetailContentHeight_ParentLineShownForSubtask(t *testing.T) {
 
 	is.Equal(hNoParent+1, hWithParent, "parent line adds one row when ParentIsEpic=false and ParentKey is set")
 }
+
+func TestDescSegStyle_Bold(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsBold, tcell.StyleDefault)
+	_, _, attr := st.Decompose()
+	is.True(attr&tcell.AttrBold != 0, "expected bold attribute")
+}
+
+func TestDescSegStyle_Italic(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsItalic, tcell.StyleDefault)
+	_, _, attr := st.Decompose()
+	is.True(attr&tcell.AttrItalic != 0, "expected italic attribute")
+}
+
+func TestDescSegStyle_Strikethrough(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsStrikethrough, tcell.StyleDefault)
+	_, _, attr := st.Decompose()
+	is.True(attr&tcell.AttrStrikeThrough != 0, "expected strikethrough attribute")
+}
+
+func TestDescSegStyle_Underline(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsUnderline, tcell.StyleDefault)
+	_, _, attr := st.Decompose()
+	is.True(attr&tcell.AttrUnderline != 0, "expected underline attribute")
+}
+
+func TestDescSegStyle_Link(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsLink, tcell.StyleDefault)
+	_, _, attr := st.Decompose()
+	is.True(attr&tcell.AttrUnderline != 0, "link should have underline")
+}
+
+func TestDescSegStyle_Heading(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsHeading, tcell.StyleDefault)
+	_, _, attr := st.Decompose()
+	is.True(attr&tcell.AttrBold != 0, "heading should be bold")
+}
+
+func TestDescSegStyle_CombinedBoldItalic(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsBold|jira.DsItalic, tcell.StyleDefault)
+	_, _, attr := st.Decompose()
+	is.True(attr&tcell.AttrBold != 0, "expected bold")
+	is.True(attr&tcell.AttrItalic != 0, "expected italic")
+}
+
+func TestDescSegStyle_InlineCode(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsInlineCode, tcell.StyleDefault)
+	fg, _, _ := st.Decompose()
+	is.NotEqual(tcell.ColorDefault, fg, "inline code should have a non-default foreground color")
+}
+
+func TestDescSegStyle_CodeBlock(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsCodeBlock, tcell.StyleDefault)
+	fg, _, _ := st.Decompose()
+	is.NotEqual(tcell.ColorDefault, fg, "code block should have a non-default foreground color")
+}
+
+func TestDescSegStyle_BoldUsesBoldFg(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsBold, tcell.StyleDefault)
+	fg, _, attr := st.Decompose()
+	is.True(attr&tcell.AttrBold != 0, "expected bold attribute")
+	is.Equal(T().BoldFg, fg, "bold text should use BoldFg theme color")
+}
+
+func TestDescSegStyle_HeadingUsesBoldFg(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsHeading, tcell.StyleDefault)
+	fg, _, _ := st.Decompose()
+	is.Equal(T().BoldFg, fg, "heading should use BoldFg theme color")
+}
+
+func TestDescSegStyle_InlineCodeUsesCodeColors(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsInlineCode, tcell.StyleDefault)
+	fg, bg, _ := st.Decompose()
+	is.Equal(T().CodeFg, fg, "inline code should use CodeFg theme color")
+	is.Equal(T().CodeBg, bg, "inline code should use CodeBg theme color")
+}
+
+func TestDescSegStyle_CodeBlockUsesCodeColors(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsCodeBlock, tcell.StyleDefault)
+	fg, bg, _ := st.Decompose()
+	is.Equal(T().CodeFg, fg, "code block should use CodeFg theme color")
+	is.Equal(T().CodeBg, bg, "code block should use CodeBg theme color")
+}
+
+func TestDescSegStyle_BlockquoteUsesQuoteFg(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsBlockquote, tcell.StyleDefault)
+	fg, _, _ := st.Decompose()
+	is.Equal(T().QuoteFg, fg, "blockquote should use QuoteFg theme color")
+}
+
+func TestDescSegStyle_CodeBlockKeyword(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsCodeBlock|jira.DsKeyword, tcell.StyleDefault)
+	fg, _, _ := st.Decompose()
+	is.Equal(T().KeywordColor, fg, "keyword in code block should use KeywordColor")
+}
+
+func TestDescSegStyle_CodeBlockString(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsCodeBlock|jira.DsString, tcell.StyleDefault)
+	fg, _, _ := st.Decompose()
+	is.Equal(T().StringColor, fg, "string in code block should use StringColor")
+}
+
+func TestDescSegStyle_CodeBlockComment(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsCodeBlock|jira.DsComment, tcell.StyleDefault)
+	fg, _, _ := st.Decompose()
+	is.Equal(T().CommentColor, fg, "comment in code block should use CommentColor")
+}
+
+func TestDescSegStyle_CodeBlockNumber(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsCodeBlock|jira.DsNumber, tcell.StyleDefault)
+	fg, _, _ := st.Decompose()
+	is.Equal(T().NumberColor, fg, "number in code block should use NumberColor")
+}
+
+func TestDescSegStyle_CodeBlockFuncName(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsCodeBlock|jira.DsFuncName, tcell.StyleDefault)
+	fg, _, _ := st.Decompose()
+	is.Equal(T().FuncColor, fg, "function name in code block should use FuncColor")
+}
+
+func TestDescSegStyle_CodeBlockPlainUsesCodeFg(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsCodeBlock, tcell.StyleDefault)
+	fg, _, _ := st.Decompose()
+	is.Equal(T().CodeFg, fg, "plain code block text should use CodeFg")
+}

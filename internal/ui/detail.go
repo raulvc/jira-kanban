@@ -487,18 +487,53 @@ func wrapStyledLine(chunks []styledChunk, width int) []styledLine {
 	return lines
 }
 
-// descSegStyle maps a DescStyle to a tcell.Style.
+// descSegStyle maps a DescStyle bitmask to a tcell.Style.
 func descSegStyle(ds jira.DescStyle, base tcell.Style) tcell.Style {
-	switch ds {
-	case jira.DsLink:
-		return tcell.StyleDefault.Foreground(T().Cyan).Background(T().Panel).Underline(true)
-	case jira.DsCode:
-		return tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg).Dim(true)
-	case jira.DsHeading:
-		return base.Bold(true)
-	default:
-		return base
+	st := base
+	if ds&jira.DsLink != 0 {
+		st = tcell.StyleDefault.Foreground(T().Cyan).Background(T().Panel).Underline(true)
 	}
+	if ds&jira.DsHeading != 0 {
+		st = st.Foreground(T().BoldFg).Bold(true)
+	}
+	if ds&jira.DsBold != 0 {
+		st = st.Foreground(T().BoldFg).Bold(true)
+	}
+	if ds&jira.DsItalic != 0 {
+		st = st.Italic(true)
+	}
+	if ds&jira.DsStrikethrough != 0 {
+		st = st.StrikeThrough(true)
+	}
+	if ds&jira.DsUnderline != 0 {
+		st = st.Underline(true)
+	}
+	if ds&jira.DsInlineCode != 0 {
+		st = tcell.StyleDefault.Foreground(T().CodeFg).Background(T().CodeBg)
+	}
+	if ds&jira.DsCodeBlock != 0 {
+		st = tcell.StyleDefault.Foreground(T().CodeFg).Background(T().CodeBg)
+		// Syntax highlighting flags override the foreground color
+		if ds&jira.DsKeyword != 0 {
+			st = st.Foreground(T().KeywordColor)
+		}
+		if ds&jira.DsString != 0 {
+			st = st.Foreground(T().StringColor)
+		}
+		if ds&jira.DsComment != 0 {
+			st = st.Foreground(T().CommentColor)
+		}
+		if ds&jira.DsNumber != 0 {
+			st = st.Foreground(T().NumberColor)
+		}
+		if ds&jira.DsFuncName != 0 {
+			st = st.Foreground(T().FuncColor)
+		}
+	}
+	if ds&jira.DsBlockquote != 0 {
+		st = tcell.StyleDefault.Foreground(T().QuoteFg).Background(T().Panel)
+	}
+	return st
 }
 
 // drawRichWrappedText renders styled description segments with wrapping and scrolling.
