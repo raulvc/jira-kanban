@@ -79,7 +79,7 @@ func drawDetailModal(screen tcell.Screen, d *detailState, screenW, screenH int) 
 
 	closeY := oy + boxH - 2
 	closeStyle := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
-	closeText := " Esc/q close • e edit • a assign • t transition • c subtask • C clone • y copy key • ^Y copy url "
+	closeText := " Esc/q close • e edit • ^E editor • a assign • t transition • c subtask • C clone • y copy key • ^Y copy url "
 	if d.isSubDetail {
 		closeText = " Esc/q back "
 	}
@@ -635,6 +635,9 @@ func handleDetailInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case tcell.KeyCtrlY:
 		copyIssueURLToClipboard(ctx)
+		return nil
+	case tcell.KeyCtrlE:
+		openDescriptionInEditor(ctx)
 		return nil
 	}
 	return nil
