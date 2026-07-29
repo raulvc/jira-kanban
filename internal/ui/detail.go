@@ -533,6 +533,9 @@ func descSegStyle(ds jira.DescStyle, base tcell.Style) tcell.Style {
 	if ds&jira.DsBlockquote != 0 {
 		st = tcell.StyleDefault.Foreground(T().QuoteFg).Background(T().Panel)
 	}
+	if ds&jira.DsMention != 0 {
+		st = st.Foreground(T().MentionColor)
+	}
 	return st
 }
 

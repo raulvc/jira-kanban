@@ -487,3 +487,56 @@ func TestParseRichDesc_CodeBlockNoLanguageFallsBack(t *testing.T) {
 	}
 	is.True(foundCodeBlock, "expected DsCodeBlock segments even without language")
 }
+
+func TestParseRichDesc_Mention(t *testing.T) {
+	t.Parallel()
+	is := assert.New(t)
+	raw := json.RawMessage(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Assigned to "},{"type":"mention","attrs":{"id":"abc","text":"John Doe","accessLevel":"CONTAINER"}},{"type":"text","text":" for review"}]}]}`)
+	got := ParseRichDesc(raw)
+	is.NotEmpty(got)
+	foundMention := false
+	for _, seg := range got {
+		if seg.Style&DsMention != 0 {
+			is.Equal("@John Doe", seg.Text, "mention text should have @ prefix")
+			foundMention = true
+		}
+	}
+	is.True(foundMention, "expected a mention segment")
+}
+
+func TestParseRichDesc_MentionAlreadyHasAt(t *testing.T) {
+	t.Parallel()
+	is := assert.New(t)
+	raw := json.RawMessage(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"mention","attrs":{"id":"abc","text":"@Jane"}}]}]}`)
+	got := ParseRichDesc(raw)
+	is.NotEmpty(got)
+	for _, seg := range got {
+		if seg.Style&DsMention != 0 {
+			is.Equal("@Jane", seg.Text, "should not double-prefix @")
+		}
+	}
+}
+
+func TestParseRichDesc_MentionNoAttrsText(t *testing.T) {
+	t.Parallel()
+	is := assert.New(t)
+	raw := json.RawMessage(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"mention","attrs":{"id":"abc"},"text":"@Bob"}]}]}`)
+	got := ParseRichDesc(raw)
+	is.NotEmpty(got)
+	foundMention := false
+	for _, seg := range got {
+		if seg.Style&DsMention != 0 {
+			is.Equal("@Bob", seg.Text, "should fall back to top-level text field")
+			foundMention = true
+		}
+	}
+	is.True(foundMention, "expected a mention segment")
+}
+
+func TestParseDescription_MentionPlainText(t *testing.T) {
+	t.Parallel()
+	is := assert.New(t)
+	raw := json.RawMessage(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Hi "},{"type":"mention","attrs":{"id":"abc","text":"Alice"}},{"type":"text","text":"!"}]}]}`)
+	desc := parseDescription(raw)
+	is.Contains(desc, "@Alice", "plain text should include mention display name")
+}

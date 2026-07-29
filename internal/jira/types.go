@@ -171,6 +171,7 @@ const (
 	DsComment                            // syntax: comment
 	DsNumber                             // syntax: numeric literal
 	DsFuncName                           // syntax: function name
+	DsMention                            // @user mention
 )
 
 // DsUnknown is kept for backward compatibility; it maps to DsNormal.
@@ -226,6 +227,7 @@ type adfMark struct {
 type adfAttrs struct {
 	Level    int    `json:"level,omitempty"`
 	Language string `json:"language,omitempty"`
+	Text     string `json:"text,omitempty"` // mention display text (attrs.text)
 }
 
 // adfToPlain extracts plain text from an ADF document, adding newlines
@@ -258,6 +260,8 @@ func renderADFNode(b *strings.Builder, node adfNode) {
 		renderADFHeading(b, node)
 	case "text", "inlineCard":
 		renderADFText(b, node)
+	case "mention":
+		b.WriteString(mentionText(node))
 	case "hardBreak":
 		b.WriteByte('\n')
 	case "codeBlock":
@@ -389,23 +393,15 @@ func appendRichNode(segs []DescSeg, node adfNode) []DescSeg {
 	case "heading":
 		segs = appendRichHeading(segs, node)
 	case "bulletList":
-		for i, child := range node.Content {
-			if i > 0 {
-				segs = append(segs, DescSeg{Text: "\n"})
-			}
-			segs = appendRichListItem(segs, child, "• ")
-		}
+		segs = appendRichList(segs, node.Content, "• ")
 	case "orderedList":
-		for i, child := range node.Content {
-			if i > 0 {
-				segs = append(segs, DescSeg{Text: "\n"})
-			}
-			segs = appendRichListItem(segs, child, fmt.Sprintf("%d. ", i+1))
-		}
+		segs = appendRichOrderedList(segs, node.Content)
 	case "listItem":
 		segs = appendRichListItem(segs, node, "• ")
 	case "text", "inlineCard":
 		segs = appendRichText(segs, node)
+	case "mention":
+		segs = append(segs, DescSeg{Text: mentionText(node), Style: DsMention})
 	case "hardBreak":
 		segs = append(segs, DescSeg{Text: "\n"})
 	case "codeBlock":
@@ -428,6 +424,37 @@ func appendRichNode(segs []DescSeg, node adfNode) []DescSeg {
 		}
 	}
 	return segs
+}
+
+func appendRichList(segs []DescSeg, items []adfNode, prefix string) []DescSeg {
+	for i, child := range items {
+		if i > 0 {
+			segs = append(segs, DescSeg{Text: "\n"})
+		}
+		segs = appendRichListItem(segs, child, prefix)
+	}
+	return segs
+}
+
+func appendRichOrderedList(segs []DescSeg, items []adfNode) []DescSeg {
+	for i, child := range items {
+		if i > 0 {
+			segs = append(segs, DescSeg{Text: "\n"})
+		}
+		segs = appendRichListItem(segs, child, fmt.Sprintf("%d. ", i+1))
+	}
+	return segs
+}
+
+func mentionText(node adfNode) string {
+	text := node.Attrs.Text
+	if text == "" {
+		text = node.Text
+	}
+	if text != "" && !strings.HasPrefix(text, "@") {
+		text = "@" + text
+	}
+	return text
 }
 
 func appendRichListItem(segs []DescSeg, node adfNode, prefix string) []DescSeg {

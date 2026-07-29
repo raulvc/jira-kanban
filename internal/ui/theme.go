@@ -44,6 +44,7 @@ type Theme struct {
 	CommentColor tcell.Color // syntax: comments
 	NumberColor  tcell.Color // syntax: numbers
 	FuncColor    tcell.Color // syntax: function names
+	MentionColor tcell.Color // @user mentions
 }
 
 var themes = []Theme{
@@ -64,7 +65,7 @@ var themes = []Theme{
 		BoldFg: tcell.NewRGBColor(245, 240, 210), QuoteFg: tcell.NewRGBColor(150, 155, 160),
 		KeywordColor: tcell.NewRGBColor(180, 140, 200), StringColor: tcell.NewRGBColor(152, 187, 108),
 		CommentColor: tcell.NewRGBColor(110, 110, 100), NumberColor: tcell.NewRGBColor(230, 195, 132),
-		FuncColor: tcell.NewRGBColor(127, 180, 202),
+		FuncColor: tcell.NewRGBColor(127, 180, 202), MentionColor: tcell.NewRGBColor(255, 160, 102),
 	},
 	{
 		Name: "Kanagawa Light",
@@ -83,7 +84,7 @@ var themes = []Theme{
 		BoldFg: tcell.NewRGBColor(50, 50, 70), QuoteFg: tcell.NewRGBColor(110, 110, 100),
 		KeywordColor: tcell.NewRGBColor(122, 122, 160), StringColor: tcell.NewRGBColor(80, 120, 40),
 		CommentColor: tcell.NewRGBColor(130, 130, 120), NumberColor: tcell.NewRGBColor(160, 130, 40),
-		FuncColor: tcell.NewRGBColor(70, 115, 120),
+		FuncColor: tcell.NewRGBColor(70, 115, 120), MentionColor: tcell.NewRGBColor(204, 109, 0),
 	},
 	{
 		Name: "Darcula",
@@ -102,7 +103,7 @@ var themes = []Theme{
 		BoldFg: tcell.NewRGBColor(210, 220, 230), QuoteFg: tcell.NewRGBColor(128, 128, 128),
 		KeywordColor: tcell.NewRGBColor(204, 120, 50), StringColor: tcell.NewRGBColor(106, 135, 89),
 		CommentColor: tcell.NewRGBColor(128, 128, 128), NumberColor: tcell.NewRGBColor(187, 181, 41),
-		FuncColor: tcell.NewRGBColor(104, 151, 187),
+		FuncColor: tcell.NewRGBColor(104, 151, 187), MentionColor: tcell.NewRGBColor(176, 86, 143),
 	},
 	{
 		Name: "Darcula Light",
@@ -121,7 +122,7 @@ var themes = []Theme{
 		BoldFg: tcell.NewRGBColor(30, 30, 50), QuoteFg: tcell.NewRGBColor(100, 100, 100),
 		KeywordColor: tcell.NewRGBColor(0, 51, 176), StringColor: tcell.NewRGBColor(6, 125, 23),
 		CommentColor: tcell.NewRGBColor(128, 128, 128), NumberColor: tcell.NewRGBColor(204, 120, 50),
-		FuncColor: tcell.NewRGBColor(0, 110, 123),
+		FuncColor: tcell.NewRGBColor(0, 110, 123), MentionColor: tcell.NewRGBColor(199, 84, 80),
 	},
 }
 

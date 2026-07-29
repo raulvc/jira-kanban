@@ -268,3 +268,10 @@ func TestDescSegStyle_CodeBlockPlainUsesCodeFg(t *testing.T) {
 	fg, _, _ := st.Decompose()
 	is.Equal(T().CodeFg, fg, "plain code block text should use CodeFg")
 }
+
+func TestDescSegStyle_Mention(t *testing.T) {
+	is := assert.New(t)
+	st := descSegStyle(jira.DsMention, tcell.StyleDefault)
+	fg, _, _ := st.Decompose()
+	is.Equal(T().MentionColor, fg, "mention should use MentionColor")
+}
