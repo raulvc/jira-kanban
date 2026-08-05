@@ -515,7 +515,7 @@ func (c *Client) fetchIssuesByKeys(keys []string, onProgress func(fetched int)) 
 			jql := "key in (" + strings.Join(batch, ",") + ")"
 			u := fmt.Sprintf("%s/rest/api/3/search/jql", c.BaseURL)
 
-			fields := []string{"summary", "status", "assignee", "labels", "epic", "parent"}
+			fields := []string{"summary", "status", "assignee", "labels", "epic", "parent", "description"}
 			if c.RankFieldID > 0 {
 				fields = append(fields, fmt.Sprintf("customfield_%d", c.RankFieldID))
 			}
@@ -695,6 +695,7 @@ func entriesToIssues(entries map[string]cache.Entry) []issue {
 		iss.Fields.Status.ID = e.StatusID
 		iss.Fields.Status.Name = e.Status
 		iss.Fields.Labels = e.Labels
+		iss.Fields.Description = json.RawMessage(fmt.Sprintf("%q", e.Description))
 		if e.Assignee != "" && e.Assignee != "Unassigned" {
 			iss.Fields.Assignee = &struct {
 				DisplayName string `json:"displayName"`
@@ -760,14 +761,15 @@ func buildBoard(boardName string, mappings []columnMapping, issues []issue) Boar
 
 	for _, iss := range issues {
 		card := Card{
-			Key:      iss.Key,
-			Summary:  iss.Fields.Summary,
-			StatusID: strings.TrimSpace(iss.Fields.Status.ID),
-			Status:   iss.Fields.Status.Name,
-			Assignee: assigneeName(iss),
-			Labels:   iss.Fields.Labels,
-			Epic:     epicName(iss),
-			Rank:     iss.Rank,
+			Key:         iss.Key,
+			Summary:     iss.Fields.Summary,
+			StatusID:    strings.TrimSpace(iss.Fields.Status.ID),
+			Status:      iss.Fields.Status.Name,
+			Assignee:    assigneeName(iss),
+			Labels:      iss.Fields.Labels,
+			Description: parseDescription(iss.Fields.Description),
+			Epic:        epicName(iss),
+			Rank:        iss.Rank,
 		}
 
 		colName := resolveColumn(iss, statusIDToCol, statusNameToCol)

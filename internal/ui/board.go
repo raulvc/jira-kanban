@@ -33,6 +33,7 @@ type boardState struct {
 	createIssue    *createIssueState
 	editIssue      *editIssueState
 	history        *historyState
+	search         *searchState
 	memberFilter   string
 	epicFilterVal  string
 	currentUser    string
@@ -40,6 +41,7 @@ type boardState struct {
 	projectKey     string
 	pendingSelect  string // key to select after next board reload
 	hideEmpty      bool
+	highlightKey   string // card key to highlight (e.g. from search)
 }
 
 func newBoardState(data jira.Board) *boardState {
@@ -401,6 +403,9 @@ func drawBoard(screen tcell.Screen, s *boardState, boardID, x, y, width, height 
 	if s.history != nil {
 		drawHistoryModal(screen, s.history, width, height)
 	}
+	if s.search != nil {
+		drawSearchModal(screen, s.search, width, height)
+	}
 }
 
 func drawStatusBar(screen tcell.Screen, s *boardState, boardID, x, y, width int) {
@@ -476,7 +481,7 @@ func drawHelpBar(screen tcell.Screen, x, y, width int) {
 	style := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
 	fillRow(screen, x, y, width, style)
 	drawText(screen, x, y,
-		" ←/→ cols • ↑/↓ cards • e edit • f filter • ^E epic • h hide-empty • a assign • c create • C clone • H history • t transition • o browser • y copy key • ^Y copy url • r refresh • + theme • q quit",
+		" ←/→ cols • ↑/↓ cards • e edit • f filter • ^E epic • h hide-empty • a assign • c create • C clone • H history • / search board • t transition • o browser • y copy key • ^Y copy url • r refresh • + theme • q quit",
 		style, width)
 }
 
@@ -551,7 +556,8 @@ func drawColumnCards(screen tcell.Screen, fd filteredBoard, s *boardState, ci in
 		if drawY >= y+h {
 			break
 		}
-		drawCard(screen, card, active && j == curCard, x, drawY, w, y, y+h)
+		hl := s.highlightKey != "" && card.Key == s.highlightKey
+		drawCard(screen, card, active && j == curCard, x, drawY, w, y, y+h, hl)
 		drawY += ch
 	}
 }
@@ -585,11 +591,12 @@ func ensureVisible(issues []jira.Card, idx, scroll, colW, viewH int) int {
 	return max(scroll, 0)
 }
 
-func drawCard(screen tcell.Screen, card jira.Card, selected bool, x, drawY, w, clipTop, clipBot int) {
-	style := tcell.StyleDefault.Foreground(T().Fg).Background(T().CardBg)
+func drawCard(screen tcell.Screen, card jira.Card, selected bool, x, drawY, w, clipTop, clipBot int, highlight bool) {
+	bgColor := T().CardBg
 	if selected {
-		style = style.Background(T().CardSel)
+		bgColor = T().CardSel
 	}
+	style := tcell.StyleDefault.Foreground(T().Fg).Background(bgColor)
 
 	ch := cardHeight(card, w)
 	for row := drawY; row < drawY+ch; row++ {
@@ -603,6 +610,15 @@ func drawCard(screen tcell.Screen, card jira.Card, selected bool, x, drawY, w, c
 	lineY = drawCardEpic(screen, card, x, lineY, w, clipTop, clipBot)
 	lineY = drawCardLabels(screen, card, x, lineY, w, clipTop, clipBot)
 	drawCardFooter(screen, card, style, x, lineY, w, clipTop, clipBot)
+
+	if highlight {
+		hlStyle := tcell.StyleDefault.Foreground(T().Orange).Background(bgColor).Bold(true)
+		for row := drawY; row < drawY+ch; row++ {
+			if row >= clipTop && row < clipBot {
+				screen.SetContent(x, row, '▌', nil, hlStyle)
+			}
+		}
+	}
 }
 
 func drawCardSummary(screen tcell.Screen, card jira.Card, style tcell.Style, x, lineY, w, clipTop, clipBot int) int {
@@ -757,21 +773,11 @@ func handleBoardRune(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 	case 'a':
 		openAssigneePicker(ctx)
 		return nil
-	case 'c':
-		startCreateOrClone(ctx, false)
-		return nil
-	case 'C':
-		startCreateOrClone(ctx, true)
+	case 'c', 'C':
+		startCreateOrClone(ctx, event.Rune() == 'C')
 		return nil
 	case 'h':
-		ctx.state.hideEmpty = !ctx.state.hideEmpty
-		ctx.state.clampSelection()
-		saveUIPrefs(ctx.state.hideEmpty)
-		if ctx.state.hideEmpty {
-			ctx.state.statusMsg = " Hiding empty columns"
-		} else {
-			ctx.state.statusMsg = " Showing empty columns"
-		}
+		toggleHideEmpty(ctx)
 		return nil
 	case 'H':
 		if ctx.state.history == nil {
@@ -782,15 +788,35 @@ func handleBoardRune(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		copyKeyToClipboard(ctx)
 		return nil
 	case '+':
-		name := cycleTheme()
-		ctx.state.statusMsg = fmt.Sprintf(" Theme: %s", name)
-		saveThemePrefs()
+		cycleThemeAction(ctx)
+		return nil
+	case '/':
+		if ctx.state.search == nil {
+			ctx.state.search = newSearchState(searchLocal)
+		}
 		return nil
 	}
 	return event
 }
 
 // ── modal input ─────────────────────────────────────────────────────────────
+
+func toggleHideEmpty(ctx *appContext) {
+	ctx.state.hideEmpty = !ctx.state.hideEmpty
+	ctx.state.clampSelection()
+	saveUIPrefs(ctx.state.hideEmpty)
+	if ctx.state.hideEmpty {
+		ctx.state.statusMsg = " Hiding empty columns"
+	} else {
+		ctx.state.statusMsg = " Showing empty columns"
+	}
+}
+
+func cycleThemeAction(ctx *appContext) {
+	name := cycleTheme()
+	ctx.state.statusMsg = fmt.Sprintf(" Theme: %s", name)
+	saveThemePrefs()
+}
 
 func handleModalInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 	m := ctx.state.modal

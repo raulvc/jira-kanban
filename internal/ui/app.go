@@ -76,6 +76,9 @@ func Run(client *jira.Client, boardID int, data jira.Board, baseURL string, need
 		if state.history != nil {
 			return handleHistoryInput(ctx, event)
 		}
+		if state.search != nil {
+			return handleSearchInput(ctx, event)
+		}
 		if state.modal != nil {
 			return handleModalInput(ctx, event)
 		}
