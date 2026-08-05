@@ -87,5 +87,22 @@ func editDescriptionExternal(ctx *appContext, key, origDesc string) {
 			}
 			ctx.state.statusMsg = fmt.Sprintf(" Updated %s description", key)
 		})
+		if err == nil {
+			ctx.app.QueueUpdateDraw(func() {
+				go func() {
+					full, fetchErr := ctx.client.GetIssue(key)
+					ctx.app.QueueUpdateDraw(func() {
+						if fetchErr != nil {
+							return
+						}
+						ctx.state.updateIssue(key, nil, &full.Description, nil, nil)
+						if ctx.state.detail != nil && ctx.state.detail.card.Key == key {
+							ctx.state.detail.card.Description = full.Description
+							ctx.state.detail.card.RichDesc = full.RichDesc
+						}
+					})
+				}()
+			})
+		}
 	}()
 }

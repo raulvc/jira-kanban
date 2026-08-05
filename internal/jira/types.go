@@ -312,6 +312,8 @@ func renderADFListItem(b *strings.Builder, children []adfNode, prefix string) {
 }
 
 func renderADFHeading(b *strings.Builder, node adfNode) {
+	prefix := strings.Repeat("#", node.Attrs.Level) + " "
+	b.WriteString(prefix)
 	for _, child := range node.Content {
 		renderADFNode(b, child)
 	}
@@ -332,9 +334,18 @@ func renderADFText(b *strings.Builder, node adfNode) {
 }
 
 func renderADFCodeBlock(b *strings.Builder, node adfNode) {
+	lang := node.Attrs.Language
+	if lang != "" {
+		b.WriteString("```")
+		b.WriteString(lang)
+		b.WriteByte('\n')
+	} else {
+		b.WriteString("```\n")
+	}
 	for _, child := range node.Content {
 		renderADFNode(b, child)
 	}
+	b.WriteString("\n```")
 }
 
 func renderADFBlockChildren(b *strings.Builder, children []adfNode) {

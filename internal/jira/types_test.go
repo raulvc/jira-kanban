@@ -106,6 +106,92 @@ func TestAdfToPlain_EmptyDoc(t *testing.T) {
 	is.Empty(adfToPlain(&adfDoc{Type: "doc", Version: 1}))
 }
 
+func TestAdfToPlain_CodeBlockWithFences(t *testing.T) {
+	is := assert.New(t)
+	doc := &adfDoc{
+		Type:    "doc",
+		Version: 1,
+		Content: []adfNode{
+			{Type: "codeBlock", Attrs: adfAttrs{Language: "go"}, Content: []adfNode{
+				{Type: "text", Text: "fmt.Println()"},
+			}},
+		},
+	}
+	result := adfToPlain(doc)
+	is.Contains(result, "```go", "plain text should include language fence")
+	is.Contains(result, "fmt.Println()", "plain text should include code content")
+	is.Contains(result, "```", "plain text should include closing fence")
+}
+
+func TestAdfToPlain_CodeBlockNoLanguage(t *testing.T) {
+	is := assert.New(t)
+	doc := &adfDoc{
+		Type:    "doc",
+		Version: 1,
+		Content: []adfNode{
+			{Type: "codeBlock", Content: []adfNode{
+				{Type: "text", Text: "echo hello"},
+			}},
+		},
+	}
+	result := adfToPlain(doc)
+	is.Contains(result, "```\n", "plain text should include bare fence")
+	is.Contains(result, "echo hello")
+}
+
+func TestAdfToPlain_HeadingWithPrefix(t *testing.T) {
+	is := assert.New(t)
+	doc := &adfDoc{
+		Type:    "doc",
+		Version: 1,
+		Content: []adfNode{
+			{Type: "heading", Attrs: adfAttrs{Level: 2}, Content: []adfNode{
+				{Type: "text", Text: "My Heading"},
+			}},
+		},
+	}
+	result := adfToPlain(doc)
+	is.Contains(result, "## My Heading", "plain text should include heading prefix")
+}
+
+func TestDescToADF_HeadingRoundTrip(t *testing.T) {
+	is := assert.New(t)
+	adf := descToADF("## My Heading\n\nSome text")
+	is.NotEmpty(adf["content"])
+	content := adf["content"].([]map[string]any)
+	is.GreaterOrEqual(len(content), 1)
+	is.Equal("heading", content[0]["type"])
+}
+
+func TestDescToADF_CodeBlockRoundTrip(t *testing.T) {
+	is := assert.New(t)
+	adf := descToADF("```go\nfmt.Println()\n```")
+	content := adf["content"].([]map[string]any)
+	is.GreaterOrEqual(len(content), 1)
+	is.Equal("codeBlock", content[0]["type"])
+}
+
+func TestParseHeadingLine(t *testing.T) {
+	is := assert.New(t)
+	text, level := parseHeadingLine("## Hello")
+	is.Equal(2, level)
+	is.Equal("Hello", text)
+
+	text, level = parseHeadingLine("###### Deep")
+	is.Equal(6, level)
+	is.Equal("Deep", text)
+
+	text, level = parseHeadingLine("# Top")
+	is.Equal(1, level)
+	is.Equal("Top", text)
+
+	_, level = parseHeadingLine("Not a heading")
+	is.Equal(0, level)
+
+	_, level = parseHeadingLine("####### Too deep")
+	is.Equal(0, level)
+}
+
 func TestGetIssue_Success(t *testing.T) {
 	fj := newFakeJira()
 	defer fj.close()

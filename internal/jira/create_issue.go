@@ -223,6 +223,12 @@ func descToADF(desc string) map[string]any {
 			content = append(content, codeBlockNode(strings.Join(codeLines, "\n"), lang))
 			continue
 		}
+		// Check for heading (# to ######)
+		if heading, level := parseHeadingLine(lines[i]); level > 0 {
+			content = append(content, headingNode(heading, level))
+			i++
+			continue
+		}
 		// Accumulate non-code lines into paragraphs
 		var paraLines []string
 		for i < len(lines) && !strings.HasPrefix(lines[i], "```") {
@@ -333,6 +339,30 @@ func codeBlockNode(code, lang string) map[string]any {
 		"attrs": attrs,
 		"content": []map[string]any{
 			textNode(code),
+		},
+	}
+}
+
+// parseHeadingLine checks if a line starts with 1-6 '#' characters followed
+// by a space. Returns the heading text and level (0 if not a heading).
+func parseHeadingLine(line string) (string, int) {
+	for level := 6; level >= 1; level-- {
+		prefix := strings.Repeat("#", level) + " "
+		if rest, ok := strings.CutPrefix(line, prefix); ok {
+			return rest, level
+		}
+	}
+	return "", 0
+}
+
+func headingNode(text string, level int) map[string]any {
+	return map[string]any{
+		"type": "heading",
+		"attrs": map[string]any{
+			"level": level,
+		},
+		"content": []map[string]any{
+			textNode(text),
 		},
 	}
 }
