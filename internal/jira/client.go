@@ -125,11 +125,19 @@ func (c *Client) GetIssue(key string) (Card, error) {
 		RichDesc:   ParseRichDesc(resp.Fields.Description),
 		Epic:        epicName(resp),
 		Subtasks:    parseSubtasks(resp),
+		IsSubtask:   resp.Fields.IssueType.Subtask,
 	}
 	if resp.Fields.Parent != nil {
 		card.ParentKey = resp.Fields.Parent.Key
 		card.ParentSummary = resp.Fields.Parent.Fields.Summary
 		card.ParentIsEpic = strings.EqualFold(resp.Fields.Parent.Fields.IssueType.Name, "Epic")
+		// If the issue is not a subtask, the parent link is an epic association,
+		// not a true parent-child relationship. Don't expose it as a parent.
+		if !card.IsSubtask {
+			card.ParentKey = ""
+			card.ParentSummary = ""
+			card.ParentIsEpic = false
+		}
 	}
 	return card, nil
 }

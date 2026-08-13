@@ -1,7 +1,6 @@
 package jira
 
 import (
-	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -21,24 +20,7 @@ func TestSearchIssues_Text(t *testing.T) {
 		is.Contains(jql, "login bug", "text search should contain the query")
 		jsonResponse(w, searchJqlResponse{
 			Issues: []issue{
-				{Key: "PROJ-1", Fields: struct {
-					Summary string          `json:"summary"`
-					Status  struct {
-						ID   string `json:"id"`
-						Name string `json:"name"`
-					} `json:"status"`
-					Assignee *struct {
-						DisplayName string `json:"displayName"`
-					} `json:"assignee"`
-					Labels      []string       `json:"labels"`
-					Description json.RawMessage `json:"description"`
-					Parent      *issueParent    `json:"parent"`
-					Epic        *issueEpic      `json:"epic"`
-					Subtasks    []issueSubtask  `json:"subtasks"`
-				}{Summary: "Fix login bug", Status: struct {
-					ID   string `json:"id"`
-					Name string `json:"name"`
-				}{Name: "In Progress"}}},
+				newTestIssue("PROJ-1", "Fix login bug", "In Progress", ""),
 			},
 		})
 	})
@@ -92,23 +74,7 @@ func TestSearchIssues_WithAssignee(t *testing.T) {
 	fake.handle("/rest/api/3/search/jql", func(w http.ResponseWriter, _ *http.Request) {
 		jsonResponse(w, searchJqlResponse{
 			Issues: []issue{
-				{Key: "PROJ-2", Fields: struct {
-					Summary string          `json:"summary"`
-					Status  struct {
-						ID   string `json:"id"`
-						Name string `json:"name"`
-					} `json:"status"`
-					Assignee *struct {
-						DisplayName string `json:"displayName"`
-					} `json:"assignee"`
-					Labels      []string       `json:"labels"`
-					Description json.RawMessage `json:"description"`
-					Parent      *issueParent    `json:"parent"`
-					Epic        *issueEpic      `json:"epic"`
-					Subtasks    []issueSubtask  `json:"subtasks"`
-				}{Summary: "Task", Assignee: &struct {
-					DisplayName string `json:"displayName"`
-				}{DisplayName: "Jane Doe"}}},
+				newTestIssue("PROJ-2", "Task", "To Do", "Jane Doe"),
 			},
 		})
 	})
@@ -161,4 +127,16 @@ func TestLooksLikeJQL_RejectsPlainText(t *testing.T) {
 	is.False(looksLikeJQL("login bug"))
 	is.False(looksLikeJQL("fix authentication"))
 	is.False(looksLikeJQL(""))
+}
+
+func newTestIssue(key, summary, status, assignee string) issue {
+	iss := issue{Key: key}
+	iss.Fields.Summary = summary
+	iss.Fields.Status.Name = status
+	if assignee != "" {
+		iss.Fields.Assignee = &struct {
+			DisplayName string `json:"displayName"`
+		}{DisplayName: assignee}
+	}
+	return iss
 }

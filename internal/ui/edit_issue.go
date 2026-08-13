@@ -12,16 +12,17 @@ import (
 
 type editIssueState struct {
 	formState
-	key         string
-	saving     bool
-	origSum    string
-	origDesc   string
-	origLabels []string
-	origEpic   string
+	key          string
+	saving       bool
+	isSub        bool
+	origSum      string
+	origDesc     string
+	origLabels   []string
+	origEpic     string
 	origEpicName string
 }
 
-func (e *editIssueState) isSubtask() bool { return e.parentKey != "" && !e.parentEpic }
+func (e *editIssueState) isSubtask() bool { return e.isSub }
 
 func (e *editIssueState) skipField(f issueField) bool {
 	if f == ifLabels {
@@ -229,11 +230,12 @@ func openEditIssue(ctx *appContext, card jira.Card) {
 			})
 			return
 		}
-		isSub := full.ParentKey != "" && !full.ParentIsEpic
+		isSub := full.IsSubtask
 		ctx.app.QueueUpdateDraw(func() {
 			if ctx.state.editIssue != e {
 				return
 			}
+			e.isSub = isSub
 			e.summary = full.Summary
 			e.sumCur = len([]rune(full.Summary))
 			e.desc = full.Description

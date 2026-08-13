@@ -469,7 +469,7 @@ func drawDescSection(screen tcell.Screen, f *formState, lay modalLayout, cy int,
 }
 
 func drawEpicSection(screen tcell.Screen, f *formState, lay modalLayout, cy int, s formStyles, bgStyle tcell.Style) int {
-	if f.parentKey != "" && !f.parentEpic {
+	if f.isSub {
 		return cy
 	}
 	lStyle := s.label
@@ -762,6 +762,7 @@ func openCloneIssue(ctx *appContext, key string) {
 			c.desc = full.Description
 			c.descCur = len([]rune(c.desc))
 			c.labels = full.Labels
+			c.isSub = full.IsSubtask
 			if full.ParentKey != "" {
 				c.parentKey = full.ParentKey
 				c.parentSummary = full.ParentSummary
@@ -771,7 +772,7 @@ func openCloneIssue(ctx *appContext, key string) {
 			}
 		})
 
-		isSub := full.ParentKey != "" && !full.ParentIsEpic
+		isSub := full.IsSubtask
 		typeFetcher := ctx.client.GetIssueTypes
 		if isSub {
 			typeFetcher = ctx.client.GetSubtaskTypes

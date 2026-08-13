@@ -35,7 +35,8 @@ type formState struct {
 	labelCur      int
 	parentKey     string
 	parentSummary string
-	parentEpic     bool
+	parentEpic    bool
+	isSub         bool
 	field         issueField
 	btnIdx        int
 	errMsg        string

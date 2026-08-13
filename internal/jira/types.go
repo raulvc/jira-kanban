@@ -44,8 +44,8 @@ type searchJqlResponse struct {
 type issue struct {
 	Key    string `json:"key"`
 	Fields struct {
-		Summary string `json:"summary"`
-		Status  struct {
+		Summary   string `json:"summary"`
+		Status    struct {
 			ID   string `json:"id"`
 			Name string `json:"name"`
 		} `json:"status"`
@@ -57,6 +57,10 @@ type issue struct {
 		Parent      *issueParent    `json:"parent"`
 		Epic        *issueEpic      `json:"epic"`
 		Subtasks    []issueSubtask  `json:"subtasks"`
+		IssueType   struct {
+			Name    string `json:"name"`
+			Subtask bool   `json:"subtask"`
+		} `json:"issuetype"`
 	} `json:"fields"`
 	Rank string `json:"-"`
 }
@@ -148,6 +152,7 @@ type Card struct {
 	ParentKey     string
 	ParentSummary string
 	ParentIsEpic  bool
+	IsSubtask     bool
 	Subtasks      []Subtask
 }
 
