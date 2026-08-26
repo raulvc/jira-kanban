@@ -86,7 +86,7 @@ func TestEpicColor(t *testing.T) {
 }
 
 func TestDetailState_ScrollClamp(t *testing.T) {
-	d := &detailState{card: jira.Card{Key: "P-1", Description: "short"}, scroll: 0}
+	d := &detailState{scroll: 0}
 	if d.scroll != 0 {
 		t.Fatalf("initial scroll should be 0, got %d", d.scroll)
 	}

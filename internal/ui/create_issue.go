@@ -119,10 +119,11 @@ func descLines(desc string) []string {
 			lines = append(lines, "")
 			continue
 		}
-		for len(para) > 0 {
-			cut := min(len(para), descWrapW)
-			lines = append(lines, para[:cut])
-			para = para[cut:]
+		runes := []rune(para)
+		for len(runes) > 0 {
+			cut := min(len(runes), descWrapW)
+			lines = append(lines, string(runes[:cut]))
+			runes = runes[cut:]
 		}
 	}
 	return lines
@@ -453,7 +454,7 @@ func drawDescSection(screen tcell.Screen, f *formState, lay modalLayout, cy int,
 			}
 			drawText(screen, lay.ox+3, row, lines[lineIdx], st, lay.contentW-2)
 		} else if lineIdx == len(lines) && f.field == ifDescription && f.desc == "" {
-			drawText(screen, lay.ox+3, row, "Optional, Enter for newline…", s.placeholder, lay.contentW-2)
+			drawText(screen, lay.ox+3, row, "Optional, Enter for newline, Ctrl+E for editor…", s.placeholder, lay.contentW-2)
 		}
 	}
 
@@ -852,13 +853,7 @@ func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.Event
 	case tcell.KeyEnter:
 		return handleCreateEnter(ctx, c)
 	case tcell.KeyCtrlU:
-		if c.field == ifEpic {
-			c.epicKey = ""
-			c.epicName = ""
-			c.epicQuery = ""
-			c.epicCur = 0
-			c.epicSel = 0
-		}
+		clearEpicField(c)
 		return nil
 	case tcell.KeyHome:
 		handleCreateHome(c)
@@ -872,6 +867,11 @@ func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.Event
 	case tcell.KeyDelete:
 		c.deleteForward()
 		return nil
+	case tcell.KeyCtrlE:
+		if c.field == ifDescription {
+			openCreateDescEditor(ctx, c)
+		}
+		return nil
 	case tcell.KeyRune:
 		if c.field == ifButtons {
 			return nil
@@ -883,6 +883,17 @@ func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.Event
 		return nil
 	}
 	return nil
+}
+
+func clearEpicField(c *createIssueState) {
+	if c.field != ifEpic {
+		return
+	}
+	c.epicKey = ""
+	c.epicName = ""
+	c.epicQuery = ""
+	c.epicCur = 0
+	c.epicSel = 0
 }
 
 func handleCreateUp(c *createIssueState) {
