@@ -10,6 +10,15 @@ import (
 	"github.com/raulvc/jira-kanban/internal/jira"
 )
 
+// sanitizeEditorText cleans text read from an external editor file:
+// strips BOM, normalizes \r\n to \n, and trims trailing newlines.
+func sanitizeEditorText(s string) string {
+	s = strings.TrimPrefix(s, "\uFEFF")
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	return strings.TrimRight(s, "\n")
+}
+
 // openCreateDescEditor opens $EDITOR with the current description text from
 // the create-issue form. The edited text is loaded back into the form state.
 func openCreateDescEditor(ctx *appContext, c *createIssueState) {
@@ -70,7 +79,7 @@ func editInEditor(text string) (string, bool) {
 		return text, false
 	}
 
-	newDesc := strings.TrimRight(string(edited), "\n")
+	newDesc := sanitizeEditorText(string(edited))
 	return newDesc, newDesc != text
 }
 

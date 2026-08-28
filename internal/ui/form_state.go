@@ -2,6 +2,7 @@ package ui
 
 import (
 	"time"
+	"unicode/utf8"
 
 	"github.com/raulvc/jira-kanban/internal/jira"
 )
@@ -46,6 +47,9 @@ type formState struct {
 }
 
 func (f *formState) typeRune(r rune) {
+	if r == utf8.RuneError {
+		return
+	}
 	switch f.field {
 	case ifSummary:
 		runes := []rune(f.summary)

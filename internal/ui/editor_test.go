@@ -101,3 +101,49 @@ func TestEditDescriptionExternal_EmptyDescriptionClears(t *testing.T) {
 	is.Equal("", card.Description, "description should be cleared")
 	is.Equal("", s.detail.card.Description, "detail description should be cleared")
 }
+
+func TestSanitizeEditorText_StripsBOM(t *testing.T) {
+	is := assert.New(t)
+	result := sanitizeEditorText("\uFEFFhello world")
+	is.Equal("hello world", result, "BOM should be stripped")
+}
+
+func TestSanitizeEditorText_NormalizesCRLF(t *testing.T) {
+	is := assert.New(t)
+	result := sanitizeEditorText("line1\r\nline2\r\n")
+	is.Equal("line1\nline2", result, "CRLF should be normalized to LF")
+}
+
+func TestSanitizeEditorText_NormalizesBareCR(t *testing.T) {
+	is := assert.New(t)
+	result := sanitizeEditorText("line1\rline2\r")
+	is.Equal("line1\nline2", result, "bare CR should be normalized to LF")
+}
+
+func TestSanitizeEditorText_TrimsTrailingNewlines(t *testing.T) {
+	is := assert.New(t)
+	result := sanitizeEditorText("hello\n\n\n")
+	is.Equal("hello", result, "trailing newlines should be trimmed")
+}
+
+func TestSanitizeEditorText_PreservesInternalNewlines(t *testing.T) {
+	is := assert.New(t)
+	result := sanitizeEditorText("line1\nline2\nline3")
+	is.Equal("line1\nline2\nline3", result, "internal newlines should be preserved")
+}
+
+func TestSanitizeEditorText_PreservesUnicode(t *testing.T) {
+	is := assert.New(t)
+	result := sanitizeEditorText("Integração ação teste")
+	is.Equal("Integração ação teste", result, "Unicode should be preserved")
+}
+
+func TestTypeRune_RejectsRuneError(t *testing.T) {
+	s := newBoardState(testBoard())
+	s.createIssue = newCreateIssueState("PROJ")
+	s.createIssue.field = ifDescription
+	before := s.createIssue.desc
+	s.createIssue.typeRune('\uFFFD')
+	is := assert.New(t)
+	is.Equal(before, s.createIssue.desc, "RuneError should not be inserted")
+}
