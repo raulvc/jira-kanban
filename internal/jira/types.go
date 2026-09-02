@@ -61,6 +61,7 @@ type issue struct {
 			Name    string `json:"name"`
 			Subtask bool   `json:"subtask"`
 		} `json:"issuetype"`
+		Updated string `json:"updated"`
 	} `json:"fields"`
 	Rank string `json:"-"`
 }
@@ -154,6 +155,7 @@ type Card struct {
 	ParentIsEpic  bool
 	IsSubtask     bool
 	Subtasks      []Subtask
+	Updated       string
 }
 
 // DescStyle is a bitmask of style flags for a description segment.

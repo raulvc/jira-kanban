@@ -682,3 +682,93 @@ func TestEpicName(t *testing.T) {
 		})
 	}
 }
+
+// TestFetchChangedIssues_UsesRelativeWindow verifies the incremental sync
+// uses a server-clock relative JQL window instead of an absolute timestamp
+// (which Jira interprets in the user's profile timezone, potentially missing
+// updates due to TZ mismatch or client clock skew).
+func TestFetchChangedIssues_UsesRelativeWindow(t *testing.T) {
+	tmpCache(t)
+	fake := newFakeJira()
+	defer fake.close()
+
+	var gotJQL string
+	fake.handle("GET /rest/agile/1.0/board/1/issue", func(w http.ResponseWriter, r *http.Request) {
+		gotJQL = r.URL.Query().Get("jql")
+		jsonResponse(w, boardIssuesResponse{Total: 0, Issues: nil})
+	})
+
+	// since = 10 minutes ago → window should be elapsed (10m) + margin (3m)
+	since := time.Now().Add(-10 * time.Minute)
+	_, err := fake.client().fetchChangedIssues(1, nil, since, nil)
+	must := require.New(t)
+	must.NoError(err)
+	is := assert.New(t)
+	is.Contains(gotJQL, "updated >= -13m",
+		"JQL should use a relative window of elapsed+margin minutes, got: %s", gotJQL)
+	is.NotContains(gotJQL, "2025", "JQL should not contain an absolute date")
+	is.NotContains(gotJQL, "\"", "JQL should not contain quoted datetime")
+}
+
+// TestFetchChangedIssues_MinimumWindow verifies the window never goes below
+// the margin, even for very recent syncs.
+func TestFetchChangedIssues_MinimumWindow(t *testing.T) {
+	tmpCache(t)
+	fake := newFakeJira()
+	defer fake.close()
+
+	var gotJQL string
+	fake.handle("GET /rest/agile/1.0/board/1/issue", func(w http.ResponseWriter, r *http.Request) {
+		gotJQL = r.URL.Query().Get("jql")
+		jsonResponse(w, boardIssuesResponse{Total: 0, Issues: nil})
+	})
+
+	_, err := fake.client().fetchChangedIssues(1, nil, time.Now(), nil)
+	must := require.New(t)
+	must.NoError(err)
+	assert.Contains(t, gotJQL, "updated >= -3m",
+		"window should clamp to the 3-minute margin, got: %s", gotJQL)
+}
+
+// TestUpdateCachedCard verifies that a freshly fetched issue is written into
+// the cache without advancing the sync cursor, and that Rank/AddedAt of the
+// existing entry are preserved.
+func TestUpdateCachedCard(t *testing.T) {
+	tmpCache(t)
+	existing := cache.Store{
+		BoardID:   1,
+		FetchedAt: time.Now().Add(-5 * time.Minute),
+		Issues: map[string]cache.Entry{
+			"P-1": {Key: "P-1", Summary: "old", StatusID: "2", Status: "To Do", Rank: "0|rank1:", AddedAt: "2025-01-01T00:00:00Z"},
+		},
+	}
+	require.NoError(t, existing.Save())
+
+	fake := newFakeJira()
+	defer fake.close()
+	c := fake.client()
+
+	// Simulate a full fetch that shows the issue moved to Done.
+	card := Card{
+		Key:      "P-1",
+		Summary:  "new summary",
+		StatusID: "3",
+		Status:   "Done",
+		Updated:  "2025-09-02T12:00:00.000+0000",
+	}
+	c.UpdateCachedCard(1, card)
+
+	reloaded, err := cache.Load(1)
+	must := require.New(t)
+	must.NoError(err)
+	is := assert.New(t)
+
+	e := reloaded.Issues["P-1"]
+	is.Equal("new summary", e.Summary)
+	is.Equal("3", e.StatusID)
+	is.Equal("Done", e.Status)
+	is.Equal("2025-09-02T12:00:00.000+0000", e.Updated)
+	is.Equal("0|rank1:", e.Rank, "existing Rank should be preserved")
+	is.Equal("2025-01-01T00:00:00Z", e.AddedAt, "existing AddedAt should be preserved")
+	is.True(reloaded.FetchedAt.Equal(existing.FetchedAt), "sync cursor should not advance")
+}

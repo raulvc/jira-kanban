@@ -378,3 +378,73 @@ func TestUpdateIssue_NilFieldsNoOp(t *testing.T) {
 	card := s.data.Columns[0].Issues[0]
 	is.Equal(orig, card)
 }
+
+func TestRefreshCard_UpdatesInPlaceWhenStatusUnchanged(t *testing.T) {
+	s := newBoardState(testBoard())
+	is := require.New(t)
+
+	updated := jira.Card{Key: "P-1", Summary: "updated summary", Status: "To Do", StatusID: "1", Assignee: "Alice"}
+	s.refreshCard(updated)
+
+	card := s.data.Columns[0].Issues[0]
+	is.Equal("P-1", card.Key, "card should stay in position 0")
+	is.Equal("updated summary", card.Summary)
+	is.Equal("Alice", card.Assignee)
+	is.Len(s.data.Columns[0].Issues, 2, "column should still have 2 cards")
+}
+
+func TestRefreshCard_MovesCardBetweenColumns(t *testing.T) {
+	s := newBoardState(testBoard())
+	is := require.New(t)
+
+	// P-1 starts in "To Do" (index 0); move it to "Done" (index 2)
+	moved := jira.Card{Key: "P-1", Summary: "first", Status: "Done", StatusID: "9"}
+	s.refreshCard(moved)
+
+	// Should no longer be in To Do
+	is.Len(s.data.Columns[0].Issues, 1, "To Do should now have 1 card")
+	is.Equal("P-2", s.data.Columns[0].Issues[0].Key)
+
+	// Should be in Done
+	done := s.data.Columns[2]
+	is.Equal("P-1", done.Issues[1].Key, "P-1 appended after P-4 in Done")
+	is.Equal("Done", done.Issues[1].Status)
+}
+
+func TestRefreshCard_NonexistentStatusDropsCard(t *testing.T) {
+	s := newBoardState(testBoard())
+	is := require.New(t)
+
+	ghost := jira.Card{Key: "P-1", Summary: "first", Status: "Backlog", StatusID: "99"}
+	s.refreshCard(ghost)
+
+	is.Len(s.data.Columns[0].Issues, 1, "card should be removed from To Do")
+	for _, col := range s.data.Columns {
+		for _, c := range col.Issues {
+			is.NotEqual("P-1", c.Key, "card with unknown status should not appear anywhere")
+		}
+	}
+}
+
+func TestRefreshCard_UpdatesDetailModal(t *testing.T) {
+	s := newBoardState(testBoard())
+	s.detail = &detailState{card: jira.Card{Key: "P-1", Summary: "old", Status: "To Do"}}
+	is := require.New(t)
+
+	fresh := jira.Card{Key: "P-1", Summary: "fresh", Status: "To Do", StatusID: "1", RichDesc: []jira.DescSeg{{Text: "rich"}}}
+	s.refreshCard(fresh)
+
+	is.Equal("fresh", s.detail.card.Summary)
+	is.Equal("rich", s.detail.card.RichDesc[0].Text)
+}
+
+func TestRefreshCard_InsertsNewCard(t *testing.T) {
+	s := newBoardState(testBoard())
+	is := require.New(t)
+
+	newCard := jira.Card{Key: "P-99", Summary: "new arrival", Status: "In Progress", StatusID: "3"}
+	s.refreshCard(newCard)
+
+	inProgress := s.data.Columns[1]
+	is.Equal("P-99", inProgress.Issues[1].Key, "new card should be appended to matching column")
+}

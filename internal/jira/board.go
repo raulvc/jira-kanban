@@ -329,6 +329,31 @@ func (c *Client) UpdateCachedIssue(boardID int, issueKey string, summary, descri
 	_ = store.Save()
 }
 
+// UpdateCachedCard writes a freshly fetched issue into the cache without
+// advancing the sync cursor. Rank and AddedAt of any existing entry are
+// preserved via Merge, so the incremental sync logic stays intact.
+func (c *Client) UpdateCachedCard(boardID int, card Card) {
+	store, err := cache.Load(boardID)
+	if err != nil {
+		slog.Warn("failed to load cache for card refresh", "error", err)
+		return
+	}
+	store.Merge([]cache.Entry{{
+		Key:         card.Key,
+		Summary:     card.Summary,
+		StatusID:    card.StatusID,
+		Status:      card.Status,
+		Assignee:    card.Assignee,
+		Labels:      card.Labels,
+		Description: card.Description,
+		Epic:        card.Epic,
+		Updated:     card.Updated,
+	}}, store.FetchedAt)
+	if err := store.Save(); err != nil {
+		slog.Warn("failed to save cache after card refresh", "error", err)
+	}
+}
+
 // UpdateCachedAssignee persists an assignee change to the cache file
 // so that subsequent syncs don't revert an optimistic UI update.
 func (c *Client) UpdateCachedAssignee(boardID int, issueKey, assignee string) {
@@ -409,11 +434,19 @@ func (c *Client) fetchStubs(boardID int, statusIDs []string, onProgress func(Syn
 	return all, nil
 }
 
+// changedWindowMarginMin is the extra margin (in minutes) added to the
+// incremental sync window to cover sync duration and search-index lag.
+const changedWindowMarginMin = 3
+
 // fetchChangedIssues fetches full details for board issues updated since the
 // given timestamp.  Only issues with a visible status are returned.
 func (c *Client) fetchChangedIssues(boardID int, statusIDs []string, since time.Time, onProgress func(SyncProgress)) ([]issue, error) {
-	jql := fmt.Sprintf("updated >= \"%s\" ORDER BY updated DESC",
-		since.UTC().Format("2006-01-02 15:04"))
+	// Use a relative window anchored to the server clock: bare datetimes in
+	// JQL are interpreted in the user's profile timezone (not UTC), which can
+	// shift the window and silently miss updates. Relative minutes also
+	// eliminate client clock skew.
+	minutes := max(int(time.Since(since).Minutes())+changedWindowMarginMin, changedWindowMarginMin)
+	jql := fmt.Sprintf("updated >= -%dm ORDER BY updated DESC", minutes)
 	if len(statusIDs) > 0 {
 		jql = "status in (" + strings.Join(statusIDs, ",") + ") AND " + jql
 	}

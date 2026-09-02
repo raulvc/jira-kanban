@@ -525,6 +525,9 @@ func openIssueDetailByKey(ctx *appContext, key string) {
 	}
 	go func() {
 		full, err := ctx.client.GetIssue(key)
+		if err == nil {
+			ctx.client.UpdateCachedCard(ctx.boardID, full)
+		}
 		ctx.app.QueueUpdateDraw(func() {
 			d := ctx.state.detail
 			if d == nil || d.card.Key != key {
@@ -538,6 +541,7 @@ func openIssueDetailByKey(ctx *appContext, key string) {
 			}
 			d.card = full
 			d.loading = false
+			ctx.state.refreshCard(full)
 		})
 	}()
 }

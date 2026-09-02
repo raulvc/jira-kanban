@@ -578,6 +578,11 @@ func openIssueDetail(ctx *appContext) {
 	}
 	go func() {
 		full, err := ctx.client.GetIssue(key)
+		if err == nil {
+			// Persist the fresh data so the board and cache self-heal even
+			// when a background sync missed the update.
+			ctx.client.UpdateCachedCard(ctx.boardID, full)
+		}
 		ctx.app.QueueUpdateDraw(func() {
 			d := ctx.state.detail
 			if d == nil || d.card.Key != key {
@@ -590,6 +595,7 @@ func openIssueDetail(ctx *appContext) {
 			}
 			d.card = full
 			d.loading = false
+			ctx.state.refreshCard(full)
 		})
 	}()
 }
@@ -756,6 +762,9 @@ func openSubDetail(ctx *appContext, parent *detailState, key string) {
 	parent.subDetail = sub
 	go func() {
 		full, err := ctx.client.GetIssue(key)
+		if err == nil {
+			ctx.client.UpdateCachedCard(ctx.boardID, full)
+		}
 		ctx.app.QueueUpdateDraw(func() {
 			if parent.subDetail != sub {
 				return
@@ -767,6 +776,7 @@ func openSubDetail(ctx *appContext, parent *detailState, key string) {
 			}
 			sub.card = full
 			sub.loading = false
+			ctx.state.refreshCard(full)
 		})
 	}()
 }

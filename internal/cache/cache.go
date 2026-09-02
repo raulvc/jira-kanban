@@ -24,6 +24,7 @@ type Entry struct {
 	Description string   `json:"description"`
 	Epic        string   `json:"epic"`
 	Rank        string   `json:"rank,omitempty"`
+	Updated     string   `json:"updated,omitempty"`
 	AddedAt     string   `json:"added_at,omitempty"`
 }
 

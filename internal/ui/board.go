@@ -246,6 +246,43 @@ func (s *boardState) updateIssue(issueKey string, summary, description *string, 
 	}
 }
 
+// refreshCard updates a card on the board with fresh data from the server,
+// moving it between columns if its status changed. If the card is not on
+// the board, it is inserted into the column matching its status.
+func (s *boardState) refreshCard(card jira.Card) {
+	for ci := range s.data.Columns {
+		col := &s.data.Columns[ci]
+		for ii := range col.Issues {
+			if col.Issues[ii].Key != card.Key {
+				continue
+			}
+			if strings.EqualFold(col.Name, card.Status) {
+				col.Issues[ii] = card
+			} else {
+				col.Issues = append(col.Issues[:ii], col.Issues[ii+1:]...)
+				s.appendCardByStatus(card)
+			}
+			s.clampSelection()
+			if s.detail != nil && s.detail.card.Key == card.Key {
+				s.detail.card = card
+			}
+			return
+		}
+	}
+	s.appendCardByStatus(card)
+}
+
+// appendCardByStatus inserts a card into the column matching its status.
+// No-op if no column matches.
+func (s *boardState) appendCardByStatus(card jira.Card) {
+	for ci := range s.data.Columns {
+		if strings.EqualFold(s.data.Columns[ci].Name, card.Status) {
+			s.data.Columns[ci].Issues = append(s.data.Columns[ci].Issues, card)
+			return
+		}
+	}
+}
+
 func (s *boardState) reload(data jira.Board) {
 	s.data = data
 	if s.colIdx >= len(data.Columns) {

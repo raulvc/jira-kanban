@@ -126,6 +126,7 @@ func (c *Client) GetIssue(key string) (Card, error) {
 		Epic:        epicName(resp),
 		Subtasks:    parseSubtasks(resp),
 		IsSubtask:   resp.Fields.IssueType.Subtask,
+		Updated:     resp.Fields.Updated,
 	}
 	if resp.Fields.Parent != nil {
 		card.ParentKey = resp.Fields.Parent.Key
