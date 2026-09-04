@@ -15,33 +15,38 @@ var spinnerFrames = []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧
 
 // boardState holds the mutable navigation state of the board.
 type boardState struct {
-	data           jira.Board
-	colIdx         int
-	cardIdx        []int
-	scrollOffset   []int
-	statusMsg      string
-	syncing        bool
-	syncPhase      string
-	syncFetched    int
-	syncTotal      int
-	spinnerFrame   int
-	modal          *modalState
-	filter         *filterState
-	epicFilter     *epicFilterState
-	detail         *detailState
-	assigneePicker *assigneePickerState
-	createIssue    *createIssueState
-	editIssue      *editIssueState
-	history        *historyState
-	search         *searchState
-	memberFilter   string
-	epicFilterVal  string
-	currentUser    string
-	accountID      string
-	projectKey     string
-	pendingSelect  string // key to select after next board reload
-	hideEmpty      bool
-	highlightKey   string // card key to highlight (e.g. from search)
+	data              jira.Board
+	colIdx            int
+	cardIdx           []int
+	scrollOffset      []int
+	statusMsg         string
+	syncing           bool
+	syncPhase         string
+	syncFetched       int
+	syncTotal         int
+	spinnerFrame      int
+	modal             *modalState
+	filter            *filterState
+	epicFilter        *epicFilterState
+	detail            *detailState
+	assigneePicker    *assigneePickerState
+	createIssue       *createIssueState
+	editIssue         *editIssueState
+	history           *historyState
+	search            *searchState
+	memberFilter      string
+	epicFilterVal     string
+	sprintOn          bool
+	sprintLoading     bool
+	sprintKeys        map[string]bool
+	sprintName        string
+	sprintUnsupported bool
+	currentUser       string
+	accountID         string
+	projectKey        string
+	pendingSelect     string // key to select after next board reload
+	hideEmpty         bool
+	highlightKey      string // card key to highlight (e.g. from search)
 }
 
 func newBoardState(data jira.Board) *boardState {
@@ -308,6 +313,7 @@ type filteredBoard struct {
 	jira.Board
 	origIdx []int // filtered col i → original col index
 }
+
 // filteredData returns a filtered view of the board data with only cards
 // matching the current filters.  Empty columns are removed when hideEmpty
 // is set.  The returned filteredBoard carries a mapping from each visible
@@ -323,8 +329,11 @@ func (s *boardState) filteredData() filteredBoard {
 		for _, card := range col.Issues {
 			if s.memberFilter != "" && card.Assignee != s.memberFilter {
 				continue
-		}
+			}
 			if s.epicFilterVal != "" && card.Epic != s.epicFilterVal {
+				continue
+			}
+			if s.sprintOn && !s.sprintKeys[card.Key] {
 				continue
 			}
 			fc.Issues = append(fc.Issues, card)
@@ -413,7 +422,7 @@ func drawBoard(screen tcell.Screen, s *boardState, boardID, x, y, width, height 
 		fillRow(screen, x, row, width, bgFill)
 	}
 	drawStatusBar(screen, s, boardID, x, y, width)
-	drawHelpBar(screen, x, y+height-1, width)
+	drawHelpBar(screen, s, x, y+height-1, width)
 	drawColumns(screen, s, fd, x, y+2, width, height-3)
 
 	if s.filter != nil {
@@ -507,6 +516,11 @@ func drawStatusBar(screen tcell.Screen, s *boardState, boardID, x, y, width int)
 		if s.epicFilterVal != "" {
 			text += fmt.Sprintf("  epic: %s", s.epicFilterVal)
 		}
+		if s.sprintOn {
+			text += fmt.Sprintf("  sprint: %s", s.sprintName)
+		} else if s.sprintLoading {
+			text += "  sprint: …"
+		}
 		if s.hideEmpty {
 			text += "  hide-empty"
 		}
@@ -514,12 +528,41 @@ func drawStatusBar(screen tcell.Screen, s *boardState, boardID, x, y, width int)
 	drawText(screen, x, y, text, style, width)
 }
 
-func drawHelpBar(screen tcell.Screen, x, y, width int) {
+func drawHelpBar(screen tcell.Screen, s *boardState, x, y, width int) {
 	style := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
 	fillRow(screen, x, y, width, style)
-	drawText(screen, x, y,
-		" ←/→ cols • ↑/↓ cards • e edit • f filter • ^E epic • h hide-empty • a assign • c create • C clone • H history • / search board • t transition • o browser • y copy key • ^Y copy url • r refresh • + theme • q quit",
-		style, width)
+	drawText(screen, x, y, buildHelpText(s), style, width)
+}
+
+// buildHelpText assembles the help bar legend.  The sprint entry is omitted
+// on boards that don't support sprints.
+func buildHelpText(s *boardState) string {
+	parts := []string{
+		"←/→ cols",
+		"↑/↓ cards",
+		"e edit",
+		"f filter",
+		"^E epic",
+	}
+	if !s.sprintUnsupported {
+		parts = append(parts, "s sprint filter")
+	}
+	parts = append(parts,
+		"h hide-empty",
+		"a assign",
+		"c create",
+		"C clone",
+		"H history",
+		"/ search board",
+		"t transition",
+		"o browser",
+		"y copy key",
+		"^Y copy url",
+		"r refresh",
+		"+ theme",
+		"q quit",
+	)
+	return " " + strings.Join(parts, " • ")
 }
 
 func drawColumns(screen tcell.Screen, s *boardState, fd filteredBoard, x, y, width, height int) {
@@ -727,6 +770,7 @@ func drawCardFooter(screen tcell.Screen, card jira.Card, style tcell.Style, x, l
 		drawText(screen, x+3+kw+2, lineY, assignee, style.Foreground(assigneeColor(card.Assignee)), remaining)
 	}
 }
+
 // ── board input ─────────────────────────────────────────────────────────────
 
 func handleBoardInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
@@ -744,6 +788,10 @@ func handleBoardInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		}
 		if ctx.state.epicFilterVal != "" {
 			ctx.state.epicFilterVal = ""
+			ctx.state.clampSelection()
+		}
+		if ctx.state.sprintOn {
+			ctx.state.sprintOn = false
 			ctx.state.clampSelection()
 		}
 		return nil
@@ -801,6 +849,9 @@ func handleBoardRune(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		if ctx.state.filter == nil {
 			ctx.state.filter = newFilterState(ctx.state.data)
 		}
+		return nil
+	case 's':
+		toggleSprintFilter(ctx)
 		return nil
 	case 'e':
 		if card := ctx.state.selectedCard(); card != nil {
@@ -882,8 +933,6 @@ func handleModalInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 	}
 	return nil
 }
-
-
 
 func refreshBoard(ctx *appContext) {
 	startSync(ctx)

@@ -145,3 +145,29 @@ func TestFilteredData_EmptyColumnsPreserved(t *testing.T) {
 		t.Fatal("column B should have no Alice cards")
 	}
 }
+
+func TestFilteredData_SprintFilter(t *testing.T) {
+	s := newBoardState(jira.Board{Columns: []jira.Column{
+		{Name: "A", Issues: []jira.Card{
+			{Key: "P-1"},
+			{Key: "P-2"},
+		}},
+		{Name: "B", Issues: []jira.Card{
+			{Key: "P-3"},
+		}},
+	}})
+	s.sprintKeys = map[string]bool{"P-2": true, "P-3": true}
+	fd := s.filteredData()
+	if len(fd.Columns[0].Issues) != 2 {
+		t.Fatalf("no filter active, expected all cards shown, got %d", len(fd.Columns[0].Issues))
+	}
+
+	s.sprintOn = true
+	fd = s.filteredData()
+	if len(fd.Columns[0].Issues) != 1 || fd.Columns[0].Issues[0].Key != "P-2" {
+		t.Fatalf("expected only P-2 in col A, got %v", fd.Columns[0].Issues)
+	}
+	if len(fd.Columns[1].Issues) != 1 || fd.Columns[1].Issues[0].Key != "P-3" {
+		t.Fatalf("expected only P-3 in col B, got %v", fd.Columns[1].Issues)
+	}
+}
