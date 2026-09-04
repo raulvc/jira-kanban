@@ -36,6 +36,10 @@ type boardState struct {
 	search         *searchState
 	memberFilter   string
 	epicFilterVal  string
+	sprintOn       bool
+	sprintLoading  bool
+	sprintKeys     map[string]bool
+	sprintName     string
 	currentUser    string
 	accountID      string
 	projectKey     string
@@ -327,6 +331,9 @@ func (s *boardState) filteredData() filteredBoard {
 			if s.epicFilterVal != "" && card.Epic != s.epicFilterVal {
 				continue
 			}
+			if s.sprintOn && !s.sprintKeys[card.Key] {
+				continue
+			}
 			fc.Issues = append(fc.Issues, card)
 		}
 		result.Columns = append(result.Columns, fc)
@@ -507,6 +514,11 @@ func drawStatusBar(screen tcell.Screen, s *boardState, boardID, x, y, width int)
 		if s.epicFilterVal != "" {
 			text += fmt.Sprintf("  epic: %s", s.epicFilterVal)
 		}
+		if s.sprintOn {
+			text += fmt.Sprintf("  sprint: %s", s.sprintName)
+		} else if s.sprintLoading {
+			text += "  sprint: …"
+		}
 		if s.hideEmpty {
 			text += "  hide-empty"
 		}
@@ -518,7 +530,7 @@ func drawHelpBar(screen tcell.Screen, x, y, width int) {
 	style := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
 	fillRow(screen, x, y, width, style)
 	drawText(screen, x, y,
-		" ←/→ cols • ↑/↓ cards • e edit • f filter • ^E epic • h hide-empty • a assign • c create • C clone • H history • / search board • t transition • o browser • y copy key • ^Y copy url • r refresh • + theme • q quit",
+		" ←/→ cols • ↑/↓ cards • e edit • f filter • ^E epic • s sprint filter • h hide-empty • a assign • c create • C clone • H history • / search board • t transition • o browser • y copy key • ^Y copy url • r refresh • + theme • q quit",
 		style, width)
 }
 
@@ -746,6 +758,10 @@ func handleBoardInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 			ctx.state.epicFilterVal = ""
 			ctx.state.clampSelection()
 		}
+		if ctx.state.sprintOn {
+			ctx.state.sprintOn = false
+			ctx.state.clampSelection()
+		}
 		return nil
 	case tcell.KeyLeft:
 		ctx.state.moveColumn(-1)
@@ -801,6 +817,9 @@ func handleBoardRune(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		if ctx.state.filter == nil {
 			ctx.state.filter = newFilterState(ctx.state.data)
 		}
+		return nil
+	case 's':
+		toggleSprintFilter(ctx)
 		return nil
 	case 'e':
 		if card := ctx.state.selectedCard(); card != nil {
