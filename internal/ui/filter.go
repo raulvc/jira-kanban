@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 
@@ -12,8 +13,8 @@ import (
 // filterState tracks an assignee-filter picker modal.
 // A nil filterState means no filter modal is open.
 type filterState struct {
-	members []string
-	query   string
+	members  []string
+	query    string
 	selected int
 }
 
@@ -342,13 +343,17 @@ func drawEpicFilterModal(screen tcell.Screen, f *epicFilterState, screenW, scree
 	drawText(screen, btnX, btnY, allText, allStyle, contentW)
 	btnX += len([]rune(allText)) + gap
 	drawText(screen, btnX, btnY, clearText, cancelStyle, contentW)
-}// ── sprint filter ───────────────────────────────────────────────────────────
+} // ── sprint filter ───────────────────────────────────────────────────────────
 
 // toggleSprintFilter turns the current-sprint filter on or off.  When turning
 // it on, the board's active sprint is fetched from Jira in the background and
 // the filter is applied once the sprint's issue keys arrive.
 func toggleSprintFilter(ctx *appContext) {
 	s := ctx.state
+	if s.sprintUnsupported {
+		s.statusMsg = " This board does not support sprints"
+		return
+	}
 	if s.sprintOn {
 		s.sprintOn = false
 		s.clampSelection()
@@ -364,15 +369,21 @@ func toggleSprintFilter(ctx *appContext) {
 		sprint, keys, err := fetchSprintKeys(ctx)
 		ctx.app.QueueUpdateDraw(func() {
 			s.sprintLoading = false
-			if err != nil {
+			switch {
+			case errors.Is(err, jira.ErrSprintsUnsupported):
+				s.sprintUnsupported = true
+				s.statusMsg = " This board does not support sprints"
+			case errors.Is(err, jira.ErrNoActiveSprint):
+				s.statusMsg = " No active sprint"
+			case err != nil:
 				s.statusMsg = fmt.Sprintf(" Sprint filter: %s", err.Error())
-				return
+			default:
+				s.sprintKeys = keys
+				s.sprintName = sprint.Name
+				s.sprintOn = true
+				s.clampSelection()
+				s.statusMsg = fmt.Sprintf(" Sprint: %s", sprint.Name)
 			}
-			s.sprintKeys = keys
-			s.sprintName = sprint.Name
-			s.sprintOn = true
-			s.clampSelection()
-			s.statusMsg = fmt.Sprintf(" Sprint: %s", sprint.Name)
 		})
 	}()
 }

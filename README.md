@@ -61,7 +61,7 @@ Logs are always written to a platform-appropriate location (`/var/log/jira-kanba
 | `↑` / `↓` | Move between cards |
 | `f` | Filter by assignee |
 | `^E` | Filter by epic |
-| `s` | Toggle current-sprint filter (fetches the board's active sprint) |
+| `s` | Toggle current-sprint filter (scrum boards only; hidden on boards without sprint support) |
 | `h` | Toggle hiding empty columns (persisted to config) |
 | `/` | Search board (fuzzy, local) — press `Tab` for global JQL search |
 | `enter` | View issue details |

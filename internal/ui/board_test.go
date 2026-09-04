@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -447,4 +448,21 @@ func TestRefreshCard_InsertsNewCard(t *testing.T) {
 
 	inProgress := s.data.Columns[1]
 	is.Equal("P-99", inProgress.Issues[1].Key, "new card should be appended to matching column")
+}
+
+func TestBuildHelpText_IncludesSprint(t *testing.T) {
+	s := newBoardState(testBoard())
+	text := buildHelpText(s)
+	is := require.New(t)
+	is.Contains(text, "s sprint filter", "sprint entry shown by default")
+	is.True(strings.HasPrefix(text, " ←/→"), "legend should start with a leading space")
+}
+
+func TestBuildHelpText_HidesSprintWhenUnsupported(t *testing.T) {
+	s := newBoardState(testBoard())
+	s.sprintUnsupported = true
+	text := buildHelpText(s)
+	is := require.New(t)
+	is.NotContains(text, "sprint", "sprint entry hidden on boards without sprint support")
+	is.Contains(text, "f filter", "other entries still present")
 }

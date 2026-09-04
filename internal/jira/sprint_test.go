@@ -43,7 +43,21 @@ func TestFetchActiveSprint_None(t *testing.T) {
 
 	c := fake.client()
 	_, err := c.FetchActiveSprint(1)
-	assert.Error(t, err, "expected error when no active sprint")
+	assert.ErrorIs(t, err, ErrNoActiveSprint, "expected ErrNoActiveSprint for empty sprint list")
+}
+
+func TestFetchActiveSprint_KanbanBoard(t *testing.T) {
+	fake := newFakeJira()
+	defer fake.close()
+
+	fake.handle("GET /rest/agile/1.0/board/1/sprint", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"errorMessages":["The board type does not support sprints"]}`))
+	})
+
+	c := fake.client()
+	_, err := c.FetchActiveSprint(1)
+	assert.ErrorIs(t, err, ErrSprintsUnsupported, "expected ErrSprintsUnsupported for HTTP 400")
 }
 
 func TestFetchSprintIssueKeys_Paginated(t *testing.T) {

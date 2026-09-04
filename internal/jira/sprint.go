@@ -1,8 +1,22 @@
 package jira
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
+	"strings"
+)
+
+// Sentinel errors for sprint support, so callers can distinguish a board
+// that can't have sprints (e.g. a Kanban board) from transient failures.
+var (
+	// ErrSprintsUnsupported is returned when the board type does not
+	// support sprints at all. Jira answers the sprint endpoint with a
+	// 400 in this case.
+	ErrSprintsUnsupported = errors.New("sprints not supported on this board")
+	// ErrNoActiveSprint is returned for boards that support sprints but
+	// currently have none active.
+	ErrNoActiveSprint = errors.New("no active sprint")
 )
 
 // Sprint is a Jira sprint on a board.
@@ -22,15 +36,21 @@ type sprintResponse struct {
 }
 
 // FetchActiveSprint returns the currently active sprint on the board.
-// Returns an error if the board has no active sprint (e.g. a pure Kanban board).
+// Returns ErrSprintsUnsupported if the board type does not support sprints
+// and ErrNoActiveSprint if the board supports sprints but none is active.
 func (c *Client) FetchActiveSprint(boardID int) (Sprint, error) {
 	u := fmt.Sprintf("%s/rest/agile/1.0/board/%d/sprint?state=active", c.BaseURL, boardID)
 	var resp sprintResponse
 	if err := c.getJSON(u, &resp); err != nil {
+		// Kanban boards (and other sprint-less board types) reject the
+		// sprint endpoint with HTTP 400.
+		if strings.HasPrefix(err.Error(), "HTTP 400") {
+			return Sprint{}, fmt.Errorf("active sprint: %w", ErrSprintsUnsupported)
+		}
 		return Sprint{}, fmt.Errorf("active sprint: %w", err)
 	}
 	if len(resp.Values) == 0 {
-		return Sprint{}, fmt.Errorf("board %d has no active sprint", boardID)
+		return Sprint{}, fmt.Errorf("active sprint: %w", ErrNoActiveSprint)
 	}
 	s := resp.Values[0]
 	return Sprint{ID: s.ID, Name: s.Name, State: s.State}, nil
