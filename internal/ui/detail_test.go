@@ -275,3 +275,11 @@ func TestDescSegStyle_Mention(t *testing.T) {
 	fg, _, _ := st.Decompose()
 	is.Equal(T().MentionColor, fg, "mention should use MentionColor")
 }
+
+func TestDetailContentHeight_IncludesReporterLine(t *testing.T) {
+	is := assert.New(t)
+	// Same card with and without a reporter — reporter adds one row.
+	with := detailContentHeight(&detailState{card: jira.Card{Key: "P-1", Reporter: "Alice"}}, 60)
+	without := detailContentHeight(&detailState{card: jira.Card{Key: "P-1"}}, 60)
+	is.Equal(without+1, with, "reporter line should add one row")
+}

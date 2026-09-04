@@ -861,6 +861,13 @@ func assigneeName(iss issue) string {
 	return "Unassigned"
 }
 
+func reporterName(iss issue) string {
+	if iss.Fields.Reporter != nil {
+		return iss.Fields.Reporter.DisplayName
+	}
+	return ""
+}
+
 func epicName(iss issue) string {
 	if iss.Fields.Epic != nil && iss.Fields.Epic.Summary != "" {
 		return iss.Fields.Epic.Summary

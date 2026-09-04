@@ -52,6 +52,9 @@ type issue struct {
 		Assignee *struct {
 			DisplayName string `json:"displayName"`
 		} `json:"assignee"`
+		Reporter *struct {
+			DisplayName string `json:"displayName"`
+		} `json:"reporter"`
 		Labels      []string       `json:"labels"`
 		Description json.RawMessage `json:"description"`
 		Parent      *issueParent    `json:"parent"`
@@ -145,6 +148,7 @@ type Card struct {
 	StatusID      string
 	Status        string
 	Assignee      string
+	Reporter      string
 	Labels        []string
 	Description   string
 	RichDesc      []DescSeg

@@ -205,6 +205,9 @@ func TestGetIssue_Success(t *testing.T) {
 				"assignee": map[string]string{
 					"displayName": "Alice",
 				},
+				"reporter": map[string]string{
+					"displayName": "Bob",
+				},
 				"labels": []string{"bug"},
 				"description": map[string]any{
 					"type":    "doc",
@@ -231,6 +234,7 @@ func TestGetIssue_Success(t *testing.T) {
 	is.Equal("Test issue", card.Summary)
 	is.Equal("Some description", card.Description)
 	is.Equal("Alice", card.Assignee)
+	is.Equal("Bob", card.Reporter)
 }
 
 func TestGetIssue_NotFound(t *testing.T) {

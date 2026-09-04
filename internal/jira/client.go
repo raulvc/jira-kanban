@@ -120,6 +120,7 @@ func (c *Client) GetIssue(key string) (Card, error) {
 		StatusID:    strings.TrimSpace(resp.Fields.Status.ID),
 		Status:      resp.Fields.Status.Name,
 		Assignee:    assigneeName(resp),
+		Reporter:    reporterName(resp),
 		Labels:      resp.Fields.Labels,
 		Description: parseDescription(resp.Fields.Description),
 		RichDesc:   ParseRichDesc(resp.Fields.Description),

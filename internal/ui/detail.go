@@ -107,6 +107,9 @@ func detailContentHeight(d *detailState, contentW int) int {
 	contentH++ // blank
 	contentH++ // status
 	contentH++ // assignee
+	if d.card.Reporter != "" {
+		contentH++
+	}
 	if d.card.ParentKey != "" && !d.card.ParentIsEpic {
 		contentH++
 	}
@@ -163,6 +166,13 @@ func drawDetailHeader(screen tcell.Screen, d *detailState, l *detailLayout, cy i
 	}
 	drawText(screen, l.ox+l.padding+10, cy, assigneeText, assigneeStyle, l.maxCW-10)
 	cy++
+
+	if d.card.Reporter != "" {
+		drawText(screen, l.ox+l.padding, cy, "Reporter: ", l.keyStyle, l.maxCW)
+		reporterStyle := tcell.StyleDefault.Foreground(assigneeColor(d.card.Reporter)).Background(T().Panel)
+		drawText(screen, l.ox+l.padding+10, cy, d.card.Reporter, reporterStyle, l.maxCW-10)
+		cy++
+	}
 
 	if d.card.ParentKey != "" && !d.card.ParentIsEpic {
 		parentText := truncStr(d.card.ParentKey+": "+d.card.ParentSummary, l.maxCW-8)
