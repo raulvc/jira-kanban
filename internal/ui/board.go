@@ -846,9 +846,7 @@ func handleBoardRune(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		}
 		return nil
 	case 'f':
-		if ctx.state.filter == nil {
-			ctx.state.filter = newFilterState(ctx.state.data)
-		}
+		openMemberFilter(ctx)
 		return nil
 	case 's':
 		toggleSprintFilter(ctx)
@@ -879,12 +877,22 @@ func handleBoardRune(ctx *appContext, event *tcell.EventKey) *tcell.EventKey {
 		cycleThemeAction(ctx)
 		return nil
 	case '/':
-		if ctx.state.search == nil {
-			ctx.state.search = newSearchState(searchLocal)
-		}
+		openLocalSearch(ctx)
 		return nil
 	}
 	return event
+}
+
+func openMemberFilter(ctx *appContext) {
+	if ctx.state.filter == nil {
+		ctx.state.filter = newFilterState(ctx.state.data)
+	}
+}
+
+func openLocalSearch(ctx *appContext) {
+	if ctx.state.search == nil {
+		ctx.state.search = newSearchState(searchLocal)
+	}
 }
 
 // ── modal input ─────────────────────────────────────────────────────────────

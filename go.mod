@@ -3,7 +3,9 @@ module github.com/raulvc/jira-kanban
 go 1.26.3
 
 require (
+	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/gdamore/tcell/v2 v2.13.10
+	github.com/junegunn/fzf v0.74.2
 	github.com/rivo/tview v0.42.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/term v0.43.0
@@ -11,11 +13,9 @@ require (
 )
 
 require (
-	github.com/alecthomas/chroma/v2 v2.27.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
 	github.com/gdamore/encoding v1.0.1 // indirect
-	github.com/junegunn/fzf v0.74.2 // indirect
 	github.com/junegunn/go-shellwords v0.0.0-20250127100254-2aa3b3277741 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect

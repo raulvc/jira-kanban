@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/url"
 	"sort"
 	"strconv"
@@ -190,33 +191,52 @@ func isFresh(addedAt string, window time.Duration) bool {
 // verifyIssues checks a set of issue keys directly (bypassing JQL search)
 // and returns cache entries for those that exist and have a visible status.
 // Keys that are not found or have a non-visible status are absent from the
-// returned map.
+// returned map.  Fetches are parallel with bounded concurrency; individual
+// failures other than 404 are logged and skipped rather than aborting the
+// whole verification.
 func (c *Client) verifyIssues(keys []string, visibleSet map[string]bool) (map[string]cache.Entry, error) {
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 	result := make(map[string]cache.Entry, len(keys))
+	var firstErr error
+	sem := make(chan struct{}, maxVerifyConcurrent)
+
 	for _, key := range keys {
-		u := fmt.Sprintf("%s/rest/api/3/issue/%s?fields=summary,status,assignee,labels,epic", c.BaseURL, key)
-		var iss issue
-		if err := c.getJSON(u, &iss); err != nil {
-			if strings.Contains(err.Error(), "404") {
-				continue
+		sem <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-sem }()
+			u := fmt.Sprintf("%s/rest/api/3/issue/%s?fields=summary,status,assignee,labels,epic", c.BaseURL, key)
+			var iss issue
+			if err := c.getJSON(u, &iss); err != nil {
+				if strings.Contains(err.Error(), "404") {
+					return
+				}
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = fmt.Errorf("verify %s: %w", key, err)
+				}
+				mu.Unlock()
+				return
 			}
-			return result, fmt.Errorf("verify %s: %w", key, err)
-		}
-		sid := strings.TrimSpace(iss.Fields.Status.ID)
-		if !visibleSet[sid] {
-			continue
-		}
-		result[key] = cache.Entry{
-			Key:      iss.Key,
-			Summary:  iss.Fields.Summary,
-			StatusID: sid,
-			Status:   strings.TrimSpace(iss.Fields.Status.Name),
-			Assignee: assigneeName(iss),
-			Labels:   iss.Fields.Labels,
-			Epic:     epicName(iss),
-		}
+			sid := strings.TrimSpace(iss.Fields.Status.ID)
+			if !visibleSet[sid] {
+				return
+			}
+			mu.Lock()
+			result[key] = cache.Entry{
+				Key:      iss.Key,
+				Summary:  iss.Fields.Summary,
+				StatusID: sid,
+				Status:   strings.TrimSpace(iss.Fields.Status.Name),
+				Assignee: assigneeName(iss),
+				Labels:   iss.Fields.Labels,
+				Epic:     epicName(iss),
+			}
+			mu.Unlock()
+		})
 	}
-	return result, nil
+	wg.Wait()
+	return result, firstErr
 }
 
 // syncRecentActivity queries the user's recent Jira activity and merges any
@@ -438,6 +458,9 @@ func (c *Client) fetchStubs(boardID int, statusIDs []string, onProgress func(Syn
 // incremental sync window to cover sync duration and search-index lag.
 const changedWindowMarginMin = 3
 
+// maxVerifyConcurrent bounds the parallel per-issue GETs in verifyIssues.
+const maxVerifyConcurrent = 10
+
 // fetchChangedIssues fetches full details for board issues updated since the
 // given timestamp.  Only issues with a visible status are returned.
 func (c *Client) fetchChangedIssues(boardID int, statusIDs []string, since time.Time, onProgress func(SyncProgress)) ([]issue, error) {
@@ -482,34 +505,67 @@ func (c *Client) fetchChangedIssues(boardID int, statusIDs []string, since time.
 // fetchKeyStatuses returns a map of issue key → status ID for the given
 // keys.  It uses a lightweight search (fields=status) so the response is
 // small.  Keys that no longer exist are simply absent from the result.
+// Batches are fetched in parallel with bounded concurrency.
 func (c *Client) fetchKeyStatuses(keys []string, onProgress func(SyncProgress)) (map[string]string, error) {
-	result := make(map[string]string, len(keys))
 	const batchSize = 50
-	for start := 0; start < len(keys); start += batchSize {
-		end := min(start+batchSize, len(keys))
-		batch := keys[start:end]
-		jql := "key in (" + strings.Join(batch, ",") + ")"
+	const maxConcurrent = 10
+	nBatches := (len(keys) + batchSize - 1) / batchSize
+	if nBatches == 0 {
+		return map[string]string{}, nil
+	}
 
-		u := fmt.Sprintf("%s/rest/api/3/search/jql", c.BaseURL)
-		reqBody := map[string]any{
-			"jql":        jql,
-			"maxResults": len(batch),
-			"fields":     []string{"status"},
+	var fetched atomic.Int64
+	var wg sync.WaitGroup
+	results := make([]map[string]string, nBatches)
+	errs := make([]error, nBatches)
+	sem := make(chan struct{}, maxConcurrent)
+
+	for i := range nBatches {
+		sem <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-sem }()
+			start := i * batchSize
+			end := min(start+batchSize, len(keys))
+			batch := keys[start:end]
+			jql := "key in (" + strings.Join(batch, ",") + ")"
+
+			u := fmt.Sprintf("%s/rest/api/3/search/jql", c.BaseURL)
+			reqBody := map[string]any{
+				"jql":        jql,
+				"maxResults": len(batch),
+				"fields":     []string{"status"},
+			}
+			var resp searchJqlResponse
+			if err := c.postJSONResponse(u, reqBody, &resp); err != nil {
+				errs[i] = fmt.Errorf("key statuses batch %d: %w", i, err)
+				return
+			}
+			batchResult := make(map[string]string, len(resp.Issues))
+			for _, iss := range resp.Issues {
+				batchResult[iss.Key] = strings.TrimSpace(iss.Fields.Status.ID)
+			}
+			results[i] = batchResult
+			if onProgress != nil {
+				done := fetched.Add(int64(len(batch)))
+				onProgress(SyncProgress{
+					Phase:   "Validating",
+					Fetched: int(min(done, int64(len(keys)))),
+					Total:   len(keys),
+				})
+			}
+		})
+	}
+	wg.Wait()
+
+	for _, err := range errs {
+		if err != nil {
+			return nil, err
 		}
-		var resp searchJqlResponse
-		if err := c.postJSONResponse(u, reqBody, &resp); err != nil {
-			return nil, fmt.Errorf("key statuses: %w", err)
-		}
-		for _, iss := range resp.Issues {
-			result[iss.Key] = strings.TrimSpace(iss.Fields.Status.ID)
-		}
-		if onProgress != nil {
-			onProgress(SyncProgress{
-				Phase:   "Validating",
-				Fetched: min(end, len(keys)),
-				Total:   len(keys),
-			})
-		}
+	}
+
+	result := make(map[string]string, len(keys))
+	for _, m := range results {
+		maps.Copy(result, m)
 	}
 	return result, nil
 }

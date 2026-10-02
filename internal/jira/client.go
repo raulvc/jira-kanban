@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -59,24 +60,7 @@ func (c *Client) postJSONRaw(rawURL string, body any) ([]byte, error) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		slog.Error("HTTP POST failed", "url", rawURL, "error", err)
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("reading response body: %w", err)
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		msg := parseJiraError(resp.StatusCode, respBody)
-		slog.Error("HTTP POST error", "url", rawURL, "status", resp.Status, "body", string(respBody))
-		return nil, msg
-	}
-	return respBody, nil
+	return c.doWithRetry(req, http.MethodPost, rawURL)
 }
 
 // Ping verifies connectivity and credentials by fetching the board configuration.
@@ -160,25 +144,62 @@ func (c *Client) getRaw(rawURL string) ([]byte, error) {
 	}
 	req.Header.Set("Authorization", c.authHeader)
 	req.Header.Set("Accept", "application/json")
+	return c.doWithRetry(req, http.MethodGet, rawURL)
+}
 
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		slog.Error("HTTP GET failed", "url", rawURL, "error", err)
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
+// maxRetries is the maximum number of attempts for rate-limited (429) or
+// transient server-error (5xx) requests.
+const maxRetries = 3
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("reading response body: %w", err)
-	}
+// doWithRetry executes the request, retrying on 429 and 5xx with
+// exponential backoff. The Retry-After header is honored when present.
+func (c *Client) doWithRetry(req *http.Request, method, rawURL string) ([]byte, error) {
+	var lastErr error
+	for attempt := range maxRetries {
+		resp, err := c.HTTPClient.Do(req)
+		if err != nil {
+			slog.Error("HTTP request failed", "method", method, "url", rawURL, "error", err)
+			return nil, fmt.Errorf("request failed: %w", err)
+		}
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		msg := parseJiraError(resp.StatusCode, body)
-		slog.Error("HTTP GET error", "url", rawURL, "status", resp.Status, "body", string(body))
-		return nil, msg
+		body, readErr := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if readErr != nil {
+			return nil, fmt.Errorf("reading response body: %w", readErr)
+		}
+
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return body, nil
+		}
+
+		lastErr = parseJiraError(resp.StatusCode, body)
+
+		// Retry only on rate limiting and transient server errors.
+		retryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+		if !retryable || attempt == maxRetries-1 {
+			slog.Error("HTTP error", "method", method, "url", rawURL, "status", resp.Status, "body", string(body))
+			return nil, lastErr
+		}
+
+		wait := retryDelay(resp, attempt)
+		slog.Warn("HTTP retryable error, backing off",
+			"method", method, "url", rawURL, "status", resp.Status,
+			"attempt", attempt+1, "wait", wait)
+		time.Sleep(wait)
 	}
-	return body, nil
+	return nil, lastErr
+}
+
+// retryDelay computes how long to wait before the next attempt, honoring
+// the server's Retry-After header (seconds) when present, otherwise
+// exponential backoff with jitter: 1s, 2s, 4s...
+func retryDelay(resp *http.Response, attempt int) time.Duration {
+	if rs := resp.Header.Get("Retry-After"); rs != "" {
+		if secs, err := strconv.Atoi(strings.TrimSpace(rs)); err == nil && secs > 0 && secs <= 60 {
+			return time.Duration(secs) * time.Second
+		}
+	}
+	return time.Duration(1<<attempt) * time.Second
 }
 
 // parseJiraError produces a human-readable error from a Jira HTTP error response.

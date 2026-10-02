@@ -73,20 +73,36 @@ func unmarshalOrZero(data []byte, boardID int) Store {
 	return s
 }
 
-// Save writes the cache to disk.
+// Save writes the cache to disk atomically: the data is written to a
+// temporary file in the same directory and renamed over the target, so a
+// crash mid-write can never corrupt the existing cache.
 func (s *Store) Save() error {
 	p, err := Path(s.BoardID)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+	dir := filepath.Dir(p)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
 	data, err := json.Marshal(s)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(p, data, 0o600)
+	tmp, err := os.CreateTemp(dir, ".board-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, p)
 }
 
 // Merge upserts entries into the cache and updates FetchedAt.
