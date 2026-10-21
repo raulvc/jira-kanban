@@ -2,6 +2,7 @@ package ui
 
 import (
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/raulvc/jira-kanban/internal/jira"
@@ -25,6 +26,7 @@ type formState struct {
 	desc          string
 	descScroll    int
 	descCur       int
+	descWrap      int // visual wrap width, set by the modal at draw time
 	epicQuery     string
 	epicCur       int
 	epicKey       string
@@ -103,6 +105,60 @@ func (f *formState) backspace() {
 			f.labelInput = string(runes[:f.labelCur-1]) + string(runes[f.labelCur:])
 			f.labelCur--
 		}
+	}
+}
+
+// wordBackStart returns the index where Alt+Backspace should delete to:
+// trailing whitespace first, then the word before it.
+func wordBackStart(runes []rune, cur int) int {
+	i := cur
+	for i > 0 && unicode.IsSpace(runes[i-1]) {
+		i--
+	}
+	for i > 0 && !unicode.IsSpace(runes[i-1]) {
+		i--
+	}
+	return i
+}
+
+// deleteWordBack removes the word before the cursor (Alt+Backspace):
+// trailing whitespace is removed first, then the word itself.
+func (f *formState) deleteWordBack() {
+	switch f.field {
+	case ifSummary:
+		runes := []rune(f.summary)
+		start := wordBackStart(runes, f.sumCur)
+		if start == f.sumCur {
+			return
+		}
+		f.summary = string(runes[:start]) + string(runes[f.sumCur:])
+		f.sumCur = start
+	case ifDescription:
+		runes := []rune(f.desc)
+		start := wordBackStart(runes, f.descCur)
+		if start == f.descCur {
+			return
+		}
+		f.desc = string(runes[:start]) + string(runes[f.descCur:])
+		f.descCur = start
+		f.descAutoScroll()
+	case ifEpic:
+		runes := []rune(f.epicQuery)
+		start := wordBackStart(runes, f.epicCur)
+		if start == f.epicCur {
+			return
+		}
+		f.epicQuery = string(runes[:start]) + string(runes[f.epicCur:])
+		f.epicCur = start
+		f.epicSel = 0
+	case ifLabels:
+		runes := []rune(f.labelInput)
+		start := wordBackStart(runes, f.labelCur)
+		if start == f.labelCur {
+			return
+		}
+		f.labelInput = string(runes[:start]) + string(runes[f.labelCur:])
+		f.labelCur = start
 	}
 }
 
@@ -188,8 +244,17 @@ func (f *formState) clampCur() {
 	f.btnIdx = clamp(f.btnIdx, 1)
 }
 
+// descWrapWidth returns the wrap width for the description text box.
+// The modal sets descWrap at draw time so wrapping matches the rendered width.
+func (f *formState) descWrapWidth() int {
+	if f.descWrap > 0 {
+		return f.descWrap
+	}
+	return defaultDescWrapW
+}
+
 func (f *formState) descAutoScroll() {
-	lines := descLines(f.desc)
+	lines := descLines(f.desc, f.descWrapWidth())
 	curLine := f.descCurLine(lines)
 	maxScroll := max(0, len(lines)-descVisH)
 	f.descScroll = clamp(f.descScroll, maxScroll)
@@ -204,8 +269,16 @@ func (f *formState) descCurLine(lines []string) int {
 	if len(lines) == 0 {
 		return 0
 	}
-	for i, off := range descLineOffsets(f.desc, lines) {
-		if f.descCur <= off+len([]rune(lines[i])) {
+	// Line i owns the cursor range [off[i], off[i+1]): a cursor sitting on a
+	// line boundary is rendered at the start of the next visual line, so it
+	// belongs to that line. The last line owns through the end of the text.
+	offsets := descLineOffsets(f.desc, lines)
+	for i := range lines {
+		end := len([]rune(f.desc))
+		if i < len(lines)-1 {
+			end = offsets[i+1]
+		}
+		if f.descCur < end {
 			return i
 		}
 	}
@@ -307,7 +380,12 @@ func (f *formState) moveHome() {
 	case ifSummary:
 		f.sumCur = 0
 	case ifDescription:
-		f.descCur = 0
+		// Home jumps to the start of the current visual line, so it works
+		// correctly across virtual line breaks caused by wrapping.
+		lines := descLines(f.desc, f.descWrapWidth())
+		curLine := f.descCurLine(lines)
+		offsets := descLineOffsets(f.desc, lines)
+		f.descCur = offsets[curLine]
 		f.descAutoScroll()
 	case ifEpic:
 		f.epicCur = 0
@@ -321,7 +399,11 @@ func (f *formState) moveEnd() {
 	case ifSummary:
 		f.sumCur = len([]rune(f.summary))
 	case ifDescription:
-		f.descCur = len([]rune(f.desc))
+		// End jumps to the end of the current visual line.
+		lines := descLines(f.desc, f.descWrapWidth())
+		curLine := f.descCurLine(lines)
+		offsets := descLineOffsets(f.desc, lines)
+		f.descCur = offsets[curLine] + len([]rune(lines[curLine]))
 		f.descAutoScroll()
 	case ifEpic:
 		f.epicCur = len([]rune(f.epicQuery))

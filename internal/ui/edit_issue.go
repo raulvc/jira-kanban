@@ -63,7 +63,7 @@ func (e *editIssueState) prevField() {
 
 func drawEditIssue(screen tcell.Screen, e *editIssueState, screenW, screenH int) {
 	const padding = 2
-	contentW := 54
+	contentW := min(max(54, screenW-8), maxModalContentW)
 
 	descExtra := descVisH - 1
 
@@ -330,6 +330,10 @@ func handleEditIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKe
 		handleEditEnd(e)
 		return nil
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		if event.Modifiers()&tcell.ModAlt != 0 {
+			e.deleteWordBack()
+			return nil
+		}
 		e.backspace()
 		return nil
 	case tcell.KeyDelete:
@@ -366,7 +370,7 @@ func handleEditUp(e *editIssueState) {
 			e.clampCur()
 		}
 	} else if e.field == ifDescription {
-		lines := descLines(e.desc)
+		lines := descLines(e.desc, e.descWrapWidth())
 		curLine := e.descCurLine(lines)
 		if curLine > 0 {
 			e.descMoveUp(lines)
@@ -398,7 +402,7 @@ func handleEditDown(e *editIssueState) {
 			e.clampCur()
 		}
 	} else if e.field == ifDescription {
-		lines := descLines(e.desc)
+		lines := descLines(e.desc, e.descWrapWidth())
 		curLine := e.descCurLine(lines)
 		if curLine < len(lines)-1 {
 			e.descMoveDown(lines)

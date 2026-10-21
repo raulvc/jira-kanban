@@ -109,9 +109,12 @@ const epicMaxVis = 5
 
 func clamp(v, hi int) int { return max(0, min(v, hi)) }
 
-func descLines(desc string) []string {
+func descLines(desc string, wrapW int) []string {
 	if desc == "" {
 		return nil
+	}
+	if wrapW <= 0 {
+		wrapW = defaultDescWrapW
 	}
 	var lines []string
 	for _, para := range strings.Split(desc, "\n") {
@@ -121,7 +124,7 @@ func descLines(desc string) []string {
 		}
 		runes := []rune(para)
 		for len(runes) > 0 {
-			cut := min(len(runes), descWrapW)
+			cut := min(len(runes), wrapW)
 			lines = append(lines, string(runes[:cut]))
 			runes = runes[cut:]
 		}
@@ -203,7 +206,14 @@ func containsFold(s, q string) bool {
 // ── drawing ────────────────────────────────────────────────────────────────
 
 const descVisH = 3
-const descWrapW = 52
+const defaultDescWrapW = 52
+
+// Modal content width bounds: form modals scale with the terminal width
+// between these values so they stay usable on large monitors.
+const (
+	minModalContentW = 54
+	maxModalContentW = 120
+)
 
 type modalLayout struct {
 	ox, oy, boxW, boxH, contentW int
@@ -211,7 +221,9 @@ type modalLayout struct {
 
 func drawCreateIssue(screen tcell.Screen, c *createIssueState, screenW, screenH int, _ string) {
 	const padding = 2
-	contentW := 54
+	// Scale with the terminal width so the modal is usable on large monitors,
+	// clamped to a sane minimum and maximum.
+	contentW := min(max(54, screenW-8), maxModalContentW)
 
 	descExtra := descVisH - 1
 
@@ -422,7 +434,16 @@ func drawDescSection(screen tcell.Screen, f *formState, lay modalLayout, cy int,
 	if f.field == ifDescription {
 		lStyle = s.activeLabel
 	}
-	drawText(screen, lay.ox+2, cy, " Description", lStyle, lay.contentW)
+	label := " Description"
+	drawText(screen, lay.ox+2, cy, label, lStyle, lay.contentW)
+	if f.field == ifDescription {
+		// Persistent hint while the description is focused, shown regardless
+		// of whether the field has content.
+		hint := " Ctrl+E editor "
+		hintStyle := tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel)
+		hx := lay.ox + 2 + lay.contentW - len([]rune(hint))
+		drawText(screen, hx, cy, hint, hintStyle, len([]rune(hint)))
+	}
 	cy++
 
 	descBoxY := cy
@@ -433,7 +454,10 @@ func drawDescSection(screen tcell.Screen, f *formState, lay modalLayout, cy int,
 		cy++
 	}
 
-	lines := descLines(f.desc)
+	// The wrap width must match the rendered text width so virtual line
+	// breaks align with what the user sees.
+	f.descWrap = lay.contentW - 2
+	lines := descLines(f.desc, f.descWrap)
 	maxScroll := max(0, len(lines)-descBoxH)
 	f.descScroll = clamp(f.descScroll, maxScroll)
 
@@ -454,7 +478,7 @@ func drawDescSection(screen tcell.Screen, f *formState, lay modalLayout, cy int,
 			}
 			drawText(screen, lay.ox+3, row, lines[lineIdx], st, lay.contentW-2)
 		} else if lineIdx == len(lines) && f.field == ifDescription && f.desc == "" {
-			drawText(screen, lay.ox+3, row, "Optional, Enter for newline, Ctrl+E for editor…", s.placeholder, lay.contentW-2)
+			drawText(screen, lay.ox+3, row, "Optional, Enter for newline…", s.placeholder, lay.contentW-2)
 		}
 	}
 
@@ -862,7 +886,7 @@ func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.Event
 		handleCreateEnd(c)
 		return nil
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
-		c.backspace()
+		handleCreateBackspace(c, event)
 		return nil
 	case tcell.KeyDelete:
 		c.deleteForward()
@@ -883,6 +907,14 @@ func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.Event
 		return nil
 	}
 	return nil
+}
+
+func handleCreateBackspace(c *createIssueState, event *tcell.EventKey) {
+	if event.Modifiers()&tcell.ModAlt != 0 {
+		c.deleteWordBack()
+		return
+	}
+	c.backspace()
 }
 
 func clearEpicField(c *createIssueState) {
@@ -914,7 +946,7 @@ func handleCreateUp(c *createIssueState) {
 			c.clampCur()
 		}
 	} else if c.field == ifDescription {
-		lines := descLines(c.desc)
+		lines := descLines(c.desc, c.descWrapWidth())
 		curLine := c.descCurLine(lines)
 		if curLine > 0 {
 			c.descMoveUp(lines)
@@ -950,7 +982,7 @@ func handleCreateDown(c *createIssueState) {
 			c.clampCur()
 		}
 	} else if c.field == ifDescription {
-		lines := descLines(c.desc)
+		lines := descLines(c.desc, c.descWrapWidth())
 		curLine := c.descCurLine(lines)
 		if curLine < len(lines)-1 {
 			c.descMoveDown(lines)
