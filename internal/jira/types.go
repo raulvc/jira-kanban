@@ -44,8 +44,8 @@ type searchJqlResponse struct {
 type issue struct {
 	Key    string `json:"key"`
 	Fields struct {
-		Summary   string `json:"summary"`
-		Status    struct {
+		Summary string `json:"summary"`
+		Status  struct {
 			ID   string `json:"id"`
 			Name string `json:"name"`
 		} `json:"status"`
@@ -55,7 +55,7 @@ type issue struct {
 		Reporter *struct {
 			DisplayName string `json:"displayName"`
 		} `json:"reporter"`
-		Labels      []string       `json:"labels"`
+		Labels      []string        `json:"labels"`
 		Description json.RawMessage `json:"description"`
 		Parent      *issueParent    `json:"parent"`
 		Epic        *issueEpic      `json:"epic"`
@@ -79,7 +79,7 @@ func extractRanks(issues []issue, raw []byte, rankFieldID int) {
 	fieldName := fmt.Sprintf("customfield_%d", rankFieldID)
 	var resp struct {
 		Issues []struct {
-			Key    string `json:"key"`
+			Key    string                     `json:"key"`
 			Fields map[string]json.RawMessage `json:"fields"`
 		} `json:"issues"`
 	}
@@ -136,8 +136,8 @@ type issueSubtask struct {
 
 // issueEpic is the epic link returned for epic-linked issues.
 type issueEpic struct {
-	Key      string `json:"key"`
-	Name     string `json:"name"`
+	Key     string `json:"key"`
+	Name    string `json:"name"`
 	Summary string `json:"summary"`
 }
 
@@ -167,22 +167,22 @@ type Card struct {
 type DescStyle int
 
 const (
-	DsNormal       DescStyle = 0
-	DsBold         DescStyle = 1 << iota // bold
-	DsItalic                             // italic
-	DsStrikethrough                      // strikethrough
-	DsInlineCode                         // inline code
-	DsUnderline                          // underline
-	DsLink                               // hyperlink
-	DsHeading                            // heading
-	DsCodeBlock                          // code block
-	DsBlockquote                         // blockquote
-	DsKeyword                            // syntax: keyword
-	DsString                             // syntax: string literal
-	DsComment                            // syntax: comment
-	DsNumber                             // syntax: numeric literal
-	DsFuncName                           // syntax: function name
-	DsMention                            // @user mention
+	DsNormal        DescStyle = 0
+	DsBold          DescStyle = 1 << iota // bold
+	DsItalic                              // italic
+	DsStrikethrough                       // strikethrough
+	DsInlineCode                          // inline code
+	DsUnderline                           // underline
+	DsLink                                // hyperlink
+	DsHeading                             // heading
+	DsCodeBlock                           // code block
+	DsBlockquote                          // blockquote
+	DsKeyword                             // syntax: keyword
+	DsString                              // syntax: string literal
+	DsComment                             // syntax: comment
+	DsNumber                              // syntax: numeric literal
+	DsFuncName                            // syntax: function name
+	DsMention                             // @user mention
 )
 
 // DsUnknown is kept for backward compatibility; it maps to DsNormal.
@@ -214,9 +214,9 @@ type Board struct {
 
 // adfDoc represents the top-level Atlassian Document Format node.
 type adfDoc struct {
-	Type    string     `json:"type"`
-	Version int        `json:"version"`
-	Content []adfNode  `json:"content"`
+	Type    string    `json:"type"`
+	Version int       `json:"version"`
+	Content []adfNode `json:"content"`
 }
 
 // adfNode is a generic node inside an ADF document.
@@ -239,6 +239,7 @@ type adfAttrs struct {
 	Level    int    `json:"level,omitempty"`
 	Language string `json:"language,omitempty"`
 	Text     string `json:"text,omitempty"` // mention display text (attrs.text)
+	URL      string `json:"url,omitempty"`  // inlineCard/blockCard target URL
 }
 
 // adfToPlain extracts plain text from an ADF document, adding newlines
@@ -332,7 +333,13 @@ func renderADFHeading(b *strings.Builder, node adfNode) {
 }
 
 func renderADFText(b *strings.Builder, node adfNode) {
-	b.WriteString(node.Text)
+	// Smart links (pasted URLs) are stored as inlineCard nodes with the URL
+	// in attrs.url and no text content.
+	text := node.Text
+	if text == "" && node.Type == "inlineCard" {
+		text = node.Attrs.URL
+	}
+	b.WriteString(text)
 	for _, m := range node.Marks {
 		if m.Type == "link" {
 			if href := m.Attrs["href"]; href != "" && href != node.Text {
@@ -516,7 +523,13 @@ func appendRichText(segs []DescSeg, node adfNode) []DescSeg {
 			style |= DsUnderline
 		}
 	}
-	segs = append(segs, DescSeg{Text: node.Text, Style: style})
+	text := node.Text
+	if text == "" && node.Type == "inlineCard" {
+		// Smart links (pasted URLs) carry the URL in attrs.url with no text.
+		text = node.Attrs.URL
+		style |= DsLink
+	}
+	segs = append(segs, DescSeg{Text: text, Style: style})
 	for _, m := range node.Marks {
 		if m.Type == "link" {
 			if href := m.Attrs["href"]; href != "" && href != node.Text {

@@ -98,6 +98,12 @@ func (c *Client) GetIssue(key string) (Card, error) {
 	if err := c.getJSON(u, &resp); err != nil {
 		return Card{}, fmt.Errorf("get issue %s: %w", key, err)
 	}
+	slog.Debug(
+		"fetched issue",
+		"key", resp.Key,
+		"rawDescription", string(resp.Fields.Description),
+		"parsedDescription", parseDescription(resp.Fields.Description),
+	)
 	card := Card{
 		Key:         resp.Key,
 		Summary:     resp.Fields.Summary,
@@ -107,7 +113,7 @@ func (c *Client) GetIssue(key string) (Card, error) {
 		Reporter:    reporterName(resp),
 		Labels:      resp.Fields.Labels,
 		Description: parseDescription(resp.Fields.Description),
-		RichDesc:   ParseRichDesc(resp.Fields.Description),
+		RichDesc:    ParseRichDesc(resp.Fields.Description),
 		Epic:        epicName(resp),
 		Subtasks:    parseSubtasks(resp),
 		IsSubtask:   resp.Fields.IssueType.Subtask,
@@ -207,7 +213,7 @@ func retryDelay(resp *http.Response, attempt int) time.Duration {
 func parseJiraError(statusCode int, body []byte) error {
 	var jerr struct {
 		ErrorMessages []string          `json:"errorMessages"`
-		Errors       map[string]string `json:"errors"`
+		Errors        map[string]string `json:"errors"`
 	}
 	if err := json.Unmarshal(body, &jerr); err == nil {
 		if jerr.Errors == nil {

@@ -192,6 +192,52 @@ func TestParseHeadingLine(t *testing.T) {
 	is.Equal(0, level)
 }
 
+// TestParseDescription_InlineCardSmartLink verifies that a pasted URL stored
+// as an ADF inlineCard (smart link — attrs.url, no text content) is rendered
+// as its URL instead of vanishing.
+func TestParseDescription_InlineCardSmartLink(t *testing.T) {
+	is := assert.New(t)
+	raw := json.RawMessage(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Thread: "},{"type":"inlineCard","attrs":{"url":"https://ifood.slack.com/archives/C08L5QXUG6Q/p1795017157995209"}}]}]}`)
+	desc := parseDescription(raw)
+	is.Equal("Thread: https://ifood.slack.com/archives/C08L5QXUG6Q/p1795017157995209", desc)
+}
+
+// TestParseDescription_InlineCardOnly verifies a description that is ONLY a
+// smart link still produces non-empty plain text.
+func TestParseDescription_InlineCardOnly(t *testing.T) {
+	is := assert.New(t)
+	raw := json.RawMessage(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"inlineCard","attrs":{"url":"https://example.com/x"}}]}]}`)
+	desc := parseDescription(raw)
+	is.Equal("https://example.com/x", desc)
+	is.NotEmpty(desc, "smart-link-only description must not be empty")
+}
+
+// TestParseRichDesc_InlineCardStyledAsLink verifies the rich renderer marks
+// smart links with the link style.
+func TestParseRichDesc_InlineCardStyledAsLink(t *testing.T) {
+	is := assert.New(t)
+	raw := json.RawMessage(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"inlineCard","attrs":{"url":"https://example.com/x"}}]}]}`)
+	segs := ParseRichDesc(raw)
+	is.NotEmpty(segs)
+	found := false
+	for _, seg := range segs {
+		if seg.Text == "https://example.com/x" && seg.Style&DsLink != 0 {
+			found = true
+		}
+	}
+	is.True(found, "expected the smart link URL as a DsLink segment")
+}
+
+// TestAppendRichText_InlineCardWithText verifies an inlineCard that somehow
+// has text keeps it (and the URL fallback only applies when text is empty).
+func TestAppendRichText_InlineCardWithText(t *testing.T) {
+	is := assert.New(t)
+	node := adfNode{Type: "inlineCard", Text: "custom label", Attrs: adfAttrs{URL: "https://example.com"}}
+	segs := appendRichText(nil, node)
+	is.Len(segs, 1)
+	is.Equal("custom label", segs[0].Text)
+}
+
 func TestGetIssue_Success(t *testing.T) {
 	fj := newFakeJira()
 	defer fj.close()
