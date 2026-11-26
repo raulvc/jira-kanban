@@ -100,17 +100,17 @@ func drawEditIssue(screen tcell.Screen, e *editIssueState, screenW, screenH int)
 	lay := modalLayout{ox, oy, boxW, boxH, contentW}
 
 	styles := formStyles{
-		bg:            tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel),
-		border:        tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel),
-		title:         tcell.StyleDefault.Foreground(T().Blue).Background(T().Panel).Bold(true),
-		label:         tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel),
-		input:         tcell.StyleDefault.Foreground(T().Fg).Background(T().Bg),
-		placeholder:   tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg),
-		activeLabel:   tcell.StyleDefault.Foreground(T().Cyan).Background(T().Panel).Bold(true),
-		activeInput:   tcell.StyleDefault.Foreground(T().Fg).Background(T().CardSel),
-		activeBorder:  tcell.StyleDefault.Foreground(T().Cyan).Background(T().Bg),
-		err:           tcell.StyleDefault.Foreground(T().Red).Background(T().Panel).Bold(true),
-		sep:           tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel).Dim(true),
+		bg:           tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel),
+		border:       tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel),
+		title:        tcell.StyleDefault.Foreground(T().Blue).Background(T().Panel).Bold(true),
+		label:        tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel),
+		input:        tcell.StyleDefault.Foreground(T().Fg).Background(T().Bg),
+		placeholder:  tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg),
+		activeLabel:  tcell.StyleDefault.Foreground(T().Cyan).Background(T().Panel).Bold(true),
+		activeInput:  tcell.StyleDefault.Foreground(T().Fg).Background(T().CardSel),
+		activeBorder: tcell.StyleDefault.Foreground(T().Cyan).Background(T().Bg),
+		err:          tcell.StyleDefault.Foreground(T().Red).Background(T().Panel).Bold(true),
+		sep:          tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel).Dim(true),
 	}
 
 	for row := oy; row < oy+boxH; row++ {
@@ -131,7 +131,6 @@ func drawEditIssue(screen tcell.Screen, e *editIssueState, screenW, screenH int)
 	cy = drawSummarySection(screen, &e.formState, lay, cy, styles)
 	cy = drawDescSection(screen, &e.formState, lay, cy, styles)
 	cy = drawEpicSection(screen, &e.formState, lay, cy, styles, styles.bg)
-
 
 	if e.errMsg != "" {
 		lines := wrapText(e.errMsg, contentW-3)
@@ -159,7 +158,7 @@ func drawEditButtons(screen tcell.Screen, e *editIssueState, lay modalLayout, s 
 	cancelText := " Cancel "
 	gap := 3
 	totalBtnW := len([]rune(saveText)) + gap + len([]rune(cancelText))
-	btnX := lay.ox + (lay.boxW-totalBtnW) / 2
+	btnX := lay.ox + (lay.boxW-totalBtnW)/2
 	if e.field == ifButtons {
 		if e.btnIdx == 0 {
 			saveStyle = tcell.StyleDefault.Foreground(T().BadgeFg).Background(T().Cyan).Bold(true)
@@ -315,13 +314,7 @@ func handleEditIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKe
 	case tcell.KeyEnter:
 		return handleEditEnter(ctx, e)
 	case tcell.KeyCtrlU:
-		if e.field == ifEpic {
-			e.epicKey = ""
-			e.epicName = ""
-			e.epicQuery = ""
-			e.epicCur = 0
-			e.epicSel = 0
-		}
+		clearEditEpicField(e)
 		return nil
 	case tcell.KeyHome:
 		handleEditHome(e)
@@ -330,14 +323,17 @@ func handleEditIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.EventKe
 		handleEditEnd(e)
 		return nil
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
-		if event.Modifiers()&tcell.ModAlt != 0 {
-			e.deleteWordBack()
-			return nil
-		}
-		e.backspace()
+		handleEditBackspace(e, event)
 		return nil
 	case tcell.KeyDelete:
 		e.deleteForward()
+		return nil
+	case tcell.KeyCtrlE:
+		if e.field == ifDescription {
+			editFormDescInEditor(ctx, &e.formState, func() bool {
+				return ctx.state.editIssue == e
+			})
+		}
 		return nil
 	case tcell.KeyRune:
 		if e.field == ifButtons {
@@ -465,7 +461,26 @@ func handleEditEnter(ctx *appContext, e *editIssueState) *tcell.EventKey {
 
 func handleEditHome(e *editIssueState) { e.moveHome() }
 
-func handleEditEnd(e *editIssueState)   { e.moveEnd() }
+func handleEditEnd(e *editIssueState) { e.moveEnd() }
+
+func handleEditBackspace(e *editIssueState, event *tcell.EventKey) {
+	if event.Modifiers()&tcell.ModAlt != 0 {
+		e.deleteWordBack()
+		return
+	}
+	e.backspace()
+}
+
+func clearEditEpicField(e *editIssueState) {
+	if e.field != ifEpic {
+		return
+	}
+	e.epicKey = ""
+	e.epicName = ""
+	e.epicQuery = ""
+	e.epicCur = 0
+	e.epicSel = 0
+}
 
 func startEditEpicSearch(ctx *appContext, e *editIssueState) {
 	if e.debounce != nil {

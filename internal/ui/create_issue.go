@@ -205,8 +205,10 @@ func containsFold(s, q string) bool {
 
 // ── drawing ────────────────────────────────────────────────────────────────
 
-const descVisH = 3
-const defaultDescWrapW = 52
+const (
+	descVisH         = 3
+	defaultDescWrapW = 52
+)
 
 // Modal content width bounds: form modals scale with the terminal width
 // between these values so they stay usable on large monitors.
@@ -263,17 +265,17 @@ func drawCreateIssue(screen tcell.Screen, c *createIssueState, screenW, screenH 
 	lay := modalLayout{ox, oy, boxW, boxH, contentW}
 
 	styles := formStyles{
-		bg:             tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel),
-		border:         tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel),
-		title:          tcell.StyleDefault.Foreground(T().Blue).Background(T().Panel).Bold(true),
-		label:          tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel),
-		input:          tcell.StyleDefault.Foreground(T().Fg).Background(T().Bg),
-		placeholder:    tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg),
-		activeLabel:    tcell.StyleDefault.Foreground(T().Cyan).Background(T().Panel).Bold(true),
-		activeInput:    tcell.StyleDefault.Foreground(T().Fg).Background(T().CardSel),
-		activeBorder:   tcell.StyleDefault.Foreground(T().Cyan).Background(T().Bg),
-		err:            tcell.StyleDefault.Foreground(T().Red).Background(T().Panel).Bold(true),
-		sep:            tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel).Dim(true),
+		bg:           tcell.StyleDefault.Foreground(T().Fg).Background(T().Panel),
+		border:       tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel),
+		title:        tcell.StyleDefault.Foreground(T().Blue).Background(T().Panel).Bold(true),
+		label:        tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel),
+		input:        tcell.StyleDefault.Foreground(T().Fg).Background(T().Bg),
+		placeholder:  tcell.StyleDefault.Foreground(T().Muted).Background(T().Bg),
+		activeLabel:  tcell.StyleDefault.Foreground(T().Cyan).Background(T().Panel).Bold(true),
+		activeInput:  tcell.StyleDefault.Foreground(T().Fg).Background(T().CardSel),
+		activeBorder: tcell.StyleDefault.Foreground(T().Cyan).Background(T().Bg),
+		err:          tcell.StyleDefault.Foreground(T().Red).Background(T().Panel).Bold(true),
+		sep:          tcell.StyleDefault.Foreground(T().Muted).Background(T().Panel).Dim(true),
 	}
 
 	for row := oy; row < oy+boxH; row++ {
@@ -587,8 +589,6 @@ func drawLabelsBadgeSection(screen tcell.Screen, f *formState, lay modalLayout, 
 	return cy
 }
 
-
-
 func drawFormDescCursor(screen tcell.Screen, f *formState, lay modalLayout, descBoxY, descBoxH int, lines []string, activeInputStyle tcell.Style) {
 	cursorSt := tcell.StyleDefault.Foreground(T().BadgeFg).Background(T().Cyan).Bold(true)
 	curLine := f.descCurLine(lines)
@@ -663,8 +663,6 @@ func drawInputField(screen tcell.Screen, x, y, w int, value, placeholder string,
 	}
 }
 
-
-
 func drawSep(screen tcell.Screen, x, y, w int, style tcell.Style) {
 	line := strings.Repeat("─", w)
 	drawText(screen, x, y, line, style, w)
@@ -706,7 +704,8 @@ func openCreateIssue(ctx *appContext) {
 				return
 			}
 			if err != nil {
-				c.errMsg = err.Error(); slog.Error("create issue failed", "error", err)
+				c.errMsg = err.Error()
+				slog.Error("create issue failed", "error", err)
 				return
 			}
 			if len(types) > 0 {
@@ -747,7 +746,8 @@ func openCreateSubtask(ctx *appContext, parentKey string, parentSummary string) 
 				return
 			}
 			if err != nil {
-				c.errMsg = err.Error(); slog.Error("create issue failed", "error", err)
+				c.errMsg = err.Error()
+				slog.Error("create issue failed", "error", err)
 				return
 			}
 			if len(types) > 0 {
@@ -781,7 +781,8 @@ func openCloneIssue(ctx *appContext, key string) {
 				return
 			}
 			if err != nil {
-				c.errMsg = err.Error(); slog.Error("clone issue failed", "error", err)
+				c.errMsg = err.Error()
+				slog.Error("clone issue failed", "error", err)
 				return
 			}
 			c.desc = full.Description
@@ -808,7 +809,8 @@ func openCloneIssue(ctx *appContext, key string) {
 				return
 			}
 			if tErr != nil {
-				c.errMsg = tErr.Error(); slog.Error("clone issue failed", "error", tErr)
+				c.errMsg = tErr.Error()
+				slog.Error("clone issue failed", "error", tErr)
 				return
 			}
 			if len(types) > 0 {
@@ -893,7 +895,9 @@ func handleCreateIssueInput(ctx *appContext, event *tcell.EventKey) *tcell.Event
 		return nil
 	case tcell.KeyCtrlE:
 		if c.field == ifDescription {
-			openCreateDescEditor(ctx, c)
+			editFormDescInEditor(ctx, &c.formState, func() bool {
+				return ctx.state.createIssue == c
+			})
 		}
 		return nil
 	case tcell.KeyRune:
@@ -1047,7 +1051,7 @@ func handleCreateEnter(ctx *appContext, c *createIssueState) *tcell.EventKey {
 
 func handleCreateHome(c *createIssueState) { c.moveHome() }
 
-func handleCreateEnd(c *createIssueState)   { c.moveEnd() }
+func handleCreateEnd(c *createIssueState) { c.moveEnd() }
 
 func startEpicSearch(ctx *appContext, c *createIssueState) {
 	if c.debounce != nil {
@@ -1067,7 +1071,8 @@ func startEpicSearch(ctx *appContext, c *createIssueState) {
 				return
 			}
 			if err != nil {
-				c.errMsg = err.Error(); slog.Error("create issue failed", "error", err)
+				c.errMsg = err.Error()
+				slog.Error("create issue failed", "error", err)
 				return
 			}
 			sortEpicsByFreq(epics, epicFreq)
@@ -1118,7 +1123,8 @@ func executeCreateIssue(ctx *appContext) {
 			}
 			if err != nil {
 				c.creating = false
-				c.errMsg = err.Error(); slog.Error("create issue failed", "error", err)
+				c.errMsg = err.Error()
+				slog.Error("create issue failed", "error", err)
 				return
 			}
 			ctx.state.createIssue = nil
@@ -1141,7 +1147,8 @@ func executeCreateIssue(ctx *appContext) {
 					}
 					if err != nil {
 						d.loading = false
-						d.err = err.Error(); slog.Error("detail load failed", "key", d.card.Key, "error", err)
+						d.err = err.Error()
+						slog.Error("detail load failed", "key", d.card.Key, "error", err)
 						return
 					}
 					d.card = full

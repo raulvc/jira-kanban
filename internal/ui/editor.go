@@ -19,10 +19,12 @@ func sanitizeEditorText(s string) string {
 	return strings.TrimRight(s, "\n")
 }
 
-// openCreateDescEditor opens $EDITOR with the current description text from
-// the create-issue form. The edited text is loaded back into the form state.
-func openCreateDescEditor(ctx *appContext, c *createIssueState) {
-	origDesc := c.desc
+// editFormDescInEditor opens $EDITOR with the description text of a form
+// modal (create or edit issue). The edited text is loaded back into the
+// form state. stillOpen reports whether the same modal instance is still
+// active when the editor returns.
+func editFormDescInEditor(ctx *appContext, f *formState, stillOpen func() bool) {
+	origDesc := f.desc
 	ok := ctx.app.Suspend(func() {
 		edited, changed := editInEditor(origDesc)
 		if !changed {
@@ -30,10 +32,10 @@ func openCreateDescEditor(ctx *appContext, c *createIssueState) {
 		}
 		// Update form state directly — we're still on the main goroutine
 		// inside Suspend, so QueueUpdateDraw would deadlock.
-		if ctx.state.createIssue == c {
-			c.desc = edited
-			c.descCur = len([]rune(edited))
-			c.descAutoScroll()
+		if stillOpen() {
+			f.desc = edited
+			f.descCur = len([]rune(edited))
+			f.descAutoScroll()
 		}
 	})
 	if !ok {
